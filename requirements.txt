@@ -1,0 +1,7 @@
+timeseriescv
+scipy
+alpha_vantage
+pandas
+cvxopt
+seaborn
+scikit-learn
