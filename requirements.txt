@@ -2,6 +2,7 @@ timeseriescv
 scipy
 alpha_vantage
 pandas
-cvxopt
+ffn
 seaborn
 scikit-learn
+config
