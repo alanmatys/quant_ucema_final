@@ -1,17 +1,8 @@
 import numpy as np
 import pandas as pd
-from datetime import date
-from matplotlib import pyplot as plt
-from alpha_vantage.timeseries import TimeSeries
-import ffn
-import config
-import requests
-import seaborn as sns
-from scipy import stats
-import matplotlib.pyplot as plt
-from scipy.cluster.hierarchy import dendrogram, linkage
-from scipy.spatial.distance import squareform
 from scipy.optimize import minimize
+from scipy.cluster.hierarchy import linkage
+from scipy.spatial.distance import squareform
 
 
 class PortfolioStrategy:
@@ -24,7 +15,7 @@ class PortfolioStrategy:
     def get_weights(self):
         raise NotImplementedError("This method should be implemented by subclasses.")
 
-class HRP(PortfolioStrategy):
+class HRP(PortfolioStrategy): # Hierarchical Risk Parity
     @staticmethod
     def get_cluster_var(cov, c_items):
         """Compute variance for a cluster."""
@@ -85,17 +76,13 @@ class HRP(PortfolioStrategy):
         condensed_dist = squareform(dist.values)
         link = linkage(condensed_dist, "single")
 
-        plt.figure(figsize=(20, 12))
-        dendrogram(link, labels=self.cov.index.values)
-        plt.show()
-
         sort_ix = self.get_quasi_diag(link)
         sort_ix = self.corr.index[sort_ix].tolist()
         self.weights = self.get_rec_bipart(self.cov, sort_ix)
         return self.weights
     
-class ASRP(PortfolioStrategy):
-    def __init__(self, returns, target_volatility=0.10):
+class ASRP(PortfolioStrategy): # Adaptive Spearman Rank Portfolio
+    def __init__(self, returns, target_volatility=0.10): # shouldn´t this be automatic based on the risk-adjusted return?
         super().__init__(returns)
         self.target_volatility = target_volatility  # Target portfolio volatility
         # Replace covariance matrix with Spearman correlation
@@ -138,12 +125,6 @@ class ASRP(PortfolioStrategy):
         # Select best linkage adaptively
         best_linkage = self.dynamic_linkage_selection(dist)
         link = linkage(squareform(dist.values), method=best_linkage)
-
-        # Plot dendrogram
-        plt.figure(figsize=(20, 12))
-        dendrogram(link, labels=self.cov.index.values)
-        plt.title(f"Dendrogram using {best_linkage} linkage")
-        plt.show()
 
         # Perform quasi-diagonalization and compute weights
         sort_ix = self.get_quasi_diag(link)
@@ -200,14 +181,14 @@ class ASRP(PortfolioStrategy):
         c_var = np.dot(np.dot(w_.T, cov_), w_)[0, 0]
         return c_var
 
-class IVP(PortfolioStrategy):
+class IVP(PortfolioStrategy): # Inverse Variance Portfolio
     def get_weights(self):
         ivp = 1.0 / np.diag(self.cov)
         ivp /= ivp.sum()
         self.weights = pd.Series(ivp, index=self.cov.index)
         return self.weights
 
-class MVP(PortfolioStrategy):
+class MVP(PortfolioStrategy): # Minimum Variance Portfolio
     def get_weights(self):
         n = len(self.cov)
         initial_weights = np.ones(n) / n
