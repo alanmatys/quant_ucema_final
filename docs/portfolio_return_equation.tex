@@ -19,4 +19,22 @@ where:
     \item \(W_i\): El peso del presupuesto asignado al Activo \(A_i\), con \(\sum_{i=1}^N W_i = 1\).
 \end{itemize}
 
+\[
+\rho = \left( \rho_{i,j} \right)_{i,j=1,...,N}
+\]
+
+\[
+\rho_{i,j} = \rho[X_i, X_j]
+\]
+
+\[
+d : (X_i, X_j) \subseteq \mathcal{B} \to \mathbb{R} \in [0, 1], \quad d_{i,j} = d[X_i, X_j] = \sqrt{\frac{1}{2}(1 - \rho_{i,j})}.
+\]
+
+
+\[
+\tilde{d} : (D_i, D_j) \subseteq \mathcal{B} \to \mathbb{R} \in [0, \sqrt{N}], \quad \tilde{d}_{i,j} = \tilde{d}[D_i, D_j] = \sqrt{\sum_{n=1}^N (d_{n,i} - d_{n,j})^2}.
+\]
+
+
 \end{document}
