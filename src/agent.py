@@ -49,7 +49,7 @@ class PortfolioChangeAnalyzerUSD:
         Analyze whether transitioning to the new portfolio is worth it
         
         Parameters:
-        - min_improvement_threshold: Minimum improvement in Sharpe ratio required
+        - min_improvement_threshold: Minimum improvement in Sharpe ratio required. If None, always transition
         
         Returns:
         - dict with recommendation and analysis details
@@ -69,7 +69,7 @@ class PortfolioChangeAnalyzerUSD:
         sharpe_improvement = adjusted_sharpe - current_metrics['sharpe_ratio']
         
         # Decision logic
-        should_transition = sharpe_improvement > min_improvement_threshold
+        should_transition = True if min_improvement_threshold is None else sharpe_improvement > min_improvement_threshold
         
         return {
             'recommendation': should_transition,
@@ -134,7 +134,7 @@ class PortfolioChangeAnalyzerPairs:
         Analyze whether transitioning to the new portfolio via pairs trading is worth it
         
         Parameters:
-        - min_improvement_threshold: Minimum improvement in Sharpe ratio required
+        - min_improvement_threshold: Minimum improvement in Sharpe ratio required. If None, always transition
         
         Returns:
         - dict with recommendation and analysis details
@@ -154,7 +154,7 @@ class PortfolioChangeAnalyzerPairs:
         sharpe_improvement = adjusted_sharpe - current_metrics['sharpe_ratio']
         
         # Decision logic
-        should_transition = sharpe_improvement > min_improvement_threshold
+        should_transition = True if min_improvement_threshold is None else sharpe_improvement > min_improvement_threshold
         
         return {
             'recommendation': should_transition,
