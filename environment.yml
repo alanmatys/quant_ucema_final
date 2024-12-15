@@ -1,0 +1,5 @@
+name: hrp_ucema
+
+dependencies:
+  - python == 3.9
+  - pip
