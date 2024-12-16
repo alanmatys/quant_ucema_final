@@ -1,17 +1,8 @@
 import numpy as np
 import pandas as pd
-from datetime import date
-from matplotlib import pyplot as plt
-from alpha_vantage.timeseries import TimeSeries
-import ffn
-import config
-import requests
-import seaborn as sns
-from scipy import stats
-import matplotlib.pyplot as plt
-from scipy.cluster.hierarchy import dendrogram, linkage
-from scipy.spatial.distance import squareform
 from scipy.optimize import minimize
+from scipy.cluster.hierarchy import linkage
+from scipy.spatial.distance import squareform
 
 
 class PortfolioStrategy:
@@ -24,7 +15,7 @@ class PortfolioStrategy:
     def get_weights(self):
         raise NotImplementedError("This method should be implemented by subclasses.")
 
-class HRP(PortfolioStrategy):
+class HRP(PortfolioStrategy): # Hierarchical Risk Parity
     @staticmethod
     def get_cluster_var(cov, c_items):
         """Compute variance for a cluster."""
@@ -85,23 +76,23 @@ class HRP(PortfolioStrategy):
         condensed_dist = squareform(dist.values)
         link = linkage(condensed_dist, "single")
 
-        plt.figure(figsize=(20, 12))
-        dendrogram(link, labels=self.cov.index.values)
-        plt.show()
-
         sort_ix = self.get_quasi_diag(link)
         sort_ix = self.corr.index[sort_ix].tolist()
         self.weights = self.get_rec_bipart(self.cov, sort_ix)
         return self.weights
     
+<<<<<<< HEAD
+class IVP(PortfolioStrategy): # Inverse Variance Portfolio
+=======
 class IVP(PortfolioStrategy):
+>>>>>>> origin/main
     def get_weights(self):
         ivp = 1.0 / np.diag(self.cov)
         ivp /= ivp.sum()
         self.weights = pd.Series(ivp, index=self.cov.index)
         return self.weights
 
-class MVP(PortfolioStrategy):
+class MVP(PortfolioStrategy): # Minimum Variance Portfolio
     def get_weights(self):
         n = len(self.cov)
         initial_weights = np.ones(n) / n
