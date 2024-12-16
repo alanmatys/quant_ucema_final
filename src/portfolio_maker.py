@@ -81,11 +81,8 @@ class HRP(PortfolioStrategy): # Hierarchical Risk Parity
         self.weights = self.get_rec_bipart(self.cov, sort_ix)
         return self.weights
     
-<<<<<<< HEAD
+    
 class IVP(PortfolioStrategy): # Inverse Variance Portfolio
-=======
-class IVP(PortfolioStrategy):
->>>>>>> origin/main
     def get_weights(self):
         ivp = 1.0 / np.diag(self.cov)
         ivp /= ivp.sum()
