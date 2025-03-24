@@ -103,3 +103,96 @@ class MVP(PortfolioStrategy): # Minimum Variance Portfolio
                           bounds=bounds, constraints=constraints)
         self.weights = pd.Series(result.x, index=self.cov.index)
         return self.weights
+
+class CVaR(PortfolioStrategy): # Conditional Value-at-Risk Portfolio
+    def __init__(self, returns, alpha=0.95, lambda_param=1.0):
+        """
+        Initialize CVaR portfolio strategy.
+        
+        Parameters:
+        -----------
+        returns : pandas.DataFrame
+            Historical returns of assets
+        alpha : float, optional (default=0.95)
+            Confidence level for CVaR (typically between 0.9 and 0.99)
+        lambda_param : float, optional (default=1.0)
+            Risk aversion parameter that controls the trade-off between return and risk
+        """
+        super().__init__(returns)
+        self.alpha = alpha
+        self.lambda_param = lambda_param
+        self.T = len(returns)
+        
+    def get_weights(self):
+        """
+        Compute portfolio weights using CVaR optimization.
+        
+        The implementation follows the formulation from:
+        https://bookdown.org/palomar/portfoliooptimizationbook/10.4-tail-based-portfolios.html
+        
+        Returns:
+        --------
+        pandas.Series
+            Optimized portfolio weights
+        """
+        n = len(self.returns.columns)
+        mean_returns = self.returns.mean()
+        
+        # Define the objective function for CVaR optimization
+        def objective(params):
+            w = params[:n]
+            tau = params[n]
+            u = params[n+1:]
+            
+            # Expected return - lambda * (tau + (1/(1-alpha)) * (1/T) * sum(u_t))
+            return -(np.dot(w, mean_returns) - self.lambda_param * 
+                    (tau + (1/(1-self.alpha)) * (1/self.T) * np.sum(u)))
+        
+        # Define constraints
+        constraints = []
+        
+        # Budget constraint: sum of weights = 1
+        constraints.append({'type': 'eq', 'fun': lambda params: np.sum(params[:n]) - 1})
+        
+        # CVaR constraints: u_t >= -w^T*r_t - tau, u_t >= 0
+        for t in range(self.T):
+            returns_t = self.returns.iloc[t].values
+            
+            # u_t >= -w^T*r_t - tau
+            def constraint_u_t(params, t=t, returns_t=returns_t):
+                w = params[:n]
+                tau = params[n]
+                u_t = params[n+1+t]
+                return u_t + np.dot(w, returns_t) + tau
+            
+            # u_t >= 0
+            def constraint_u_t_positive(params, t=t):
+                u_t = params[n+1+t]
+                return u_t
+            
+            constraints.append({'type': 'ineq', 'fun': constraint_u_t})
+            constraints.append({'type': 'ineq', 'fun': constraint_u_t_positive})
+        
+        # Bounds for variables: weights between 0 and 1, tau and u_t unconstrained
+        bounds = [(0, 1) for _ in range(n)]  # Weights bounds
+        bounds.append((None, None))  # tau bounds
+        bounds.extend([(0, None) for _ in range(self.T)])  # u_t bounds
+        
+        # Initial guess
+        initial_guess = np.zeros(n + 1 + self.T)
+        initial_guess[:n] = 1.0 / n  # Equal weights
+        
+        # Solve the optimization problem
+        result = minimize(
+            objective,
+            initial_guess,
+            method='SLSQP',
+            bounds=bounds,
+            constraints=constraints,
+            options={'maxiter': 1000, 'disp': False}
+        )
+        
+        # Extract the weights
+        optimal_weights = result.x[:n]
+        self.weights = pd.Series(optimal_weights, index=self.returns.columns)
+        return self.weights
