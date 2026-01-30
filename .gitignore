@@ -7,3 +7,12 @@
 *.fdb_latexmk
 *.pyc
 *.zip
+
+# Exclude paper folder
+paper/
+
+# Virtual environment
+venv/
+
+# macOS
+.DS_Store
