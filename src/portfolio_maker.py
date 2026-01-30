@@ -357,3 +357,413 @@ class MVP(PortfolioStrategy):
 
         self.weights = pd.Series(result.x, index=self.cov.index)
         return self.weights
+
+
+# =============================================================================
+# MOMENTUM STRATEGIES
+# =============================================================================
+
+class CrossSectionalMomentum(PortfolioStrategy):
+    """
+    Cross-Sectional Momentum Portfolio Strategy.
+
+    Ranks assets by cumulative returns over a formation period and allocates
+    to top performers while excluding bottom performers.
+
+    Crypto-optimized defaults: 21-day formation, 7-day holding, top 30%.
+
+    Reference:
+        Liu, Y., Tsyvinski, A., & Wu, X. (2022). Common Risk Factors in Cryptocurrency.
+    """
+
+    def __init__(self, returns, formation_period=21, holding_period=7,
+                 top_percentile=0.3, bottom_percentile=0.2, weighting_scheme='equal'):
+        """
+        Args:
+            returns: Historical returns DataFrame (T x N)
+            formation_period: Lookback days for momentum calculation (default: 21)
+            holding_period: Days to hold positions (default: 7)
+            top_percentile: Include assets in top X% (default: 0.3)
+            bottom_percentile: Exclude assets in bottom X% (default: 0.2)
+            weighting_scheme: 'equal', 'momentum', or 'inverse_vol'
+        """
+        super().__init__(returns)
+        self.formation_period = formation_period
+        self.holding_period = holding_period
+        self.top_percentile = top_percentile
+        self.bottom_percentile = bottom_percentile
+        self.weighting_scheme = weighting_scheme
+        self.momentum_scores = None
+        self.selected_assets = None
+
+    def calculate_momentum_scores(self):
+        """Calculate momentum score (cumulative return) for each asset."""
+        # Use formation_period, skip last day to avoid short-term reversal
+        if len(self.returns) < self.formation_period:
+            formation_returns = self.returns
+        else:
+            formation_returns = self.returns.iloc[-(self.formation_period+1):-1]
+
+        # Cumulative return over formation period
+        cumulative_returns = (1 + formation_returns).prod() - 1
+        self.momentum_scores = cumulative_returns
+        return cumulative_returns
+
+    def select_assets(self):
+        """Select assets based on momentum ranking."""
+        if self.momentum_scores is None:
+            self.calculate_momentum_scores()
+
+        n_assets = len(self.momentum_scores)
+        n_top = max(1, int(n_assets * self.top_percentile))
+        n_exclude = int(n_assets * self.bottom_percentile)
+
+        # Rank and select
+        ranked = self.momentum_scores.sort_values(ascending=False)
+
+        # Exclude bottom losers, take top winners
+        if n_exclude > 0 and n_exclude < len(ranked):
+            eligible = ranked.iloc[:-n_exclude]
+        else:
+            eligible = ranked
+
+        selected = eligible.head(n_top).index.tolist()
+        self.selected_assets = selected
+        return selected
+
+    def get_weights(self):
+        """Compute portfolio weights based on momentum selection."""
+        selected = self.select_assets()
+
+        # Initialize weights to zero
+        weights = pd.Series(0.0, index=self.returns.columns)
+
+        if len(selected) == 0:
+            # Fallback: equal weight all
+            weights = pd.Series(1.0 / len(self.returns.columns), index=self.returns.columns)
+            self.weights = weights
+            return weights
+
+        if self.weighting_scheme == 'equal':
+            weights[selected] = 1.0 / len(selected)
+
+        elif self.weighting_scheme == 'momentum':
+            # Weight by momentum score (shifted to positive)
+            mom_scores = self.momentum_scores[selected]
+            shifted = mom_scores - mom_scores.min() + 0.001
+            weights[selected] = shifted / shifted.sum()
+
+        elif self.weighting_scheme == 'inverse_vol':
+            # Inverse volatility within selected assets
+            vols = self.returns[selected].std()
+            inv_vol = 1.0 / vols
+            inv_vol = inv_vol.replace([np.inf, -np.inf], 0).fillna(0)
+            if inv_vol.sum() > 0:
+                weights[selected] = inv_vol / inv_vol.sum()
+            else:
+                weights[selected] = 1.0 / len(selected)
+
+        self.weights = weights
+        return weights
+
+
+class TimeSeriesMomentum(PortfolioStrategy):
+    """
+    Time-Series Momentum (Trend Following) Portfolio Strategy.
+
+    Each asset receives weight based on its own trend signal using
+    moving average crossovers or absolute momentum.
+
+    Reference:
+        Moskowitz, T. J., Ooi, Y. H., & Pedersen, L. H. (2012).
+        Time Series Momentum. Journal of Financial Economics.
+    """
+
+    def __init__(self, returns, signal_type='ma_crossover',
+                 fast_period=7, slow_period=28, abs_lookback=21,
+                 position_sizing='equal', volatility_target=0.15):
+        """
+        Args:
+            returns: Historical returns DataFrame (T x N)
+            signal_type: 'ma_crossover' or 'absolute'
+            fast_period: Fast MA lookback (default: 7)
+            slow_period: Slow MA lookback (default: 28)
+            abs_lookback: Lookback for absolute momentum (default: 21)
+            position_sizing: 'equal' or 'volatility_target'
+            volatility_target: Target annualized vol (default: 0.15)
+        """
+        super().__init__(returns)
+        self.signal_type = signal_type
+        self.fast_period = fast_period
+        self.slow_period = slow_period
+        self.abs_lookback = abs_lookback
+        self.position_sizing = position_sizing
+        self.volatility_target = volatility_target
+        self.trend_signals = None
+
+    def _calculate_cumulative_prices(self):
+        """Convert returns to price index for MA calculation."""
+        return (1 + self.returns).cumprod()
+
+    def calculate_ma_crossover_signals(self):
+        """Calculate MA crossover signals (1 = long, 0 = no position)."""
+        prices = self._calculate_cumulative_prices()
+
+        fast_ma = prices.rolling(window=self.fast_period).mean().iloc[-1]
+        slow_ma = prices.rolling(window=self.slow_period).mean().iloc[-1]
+
+        # Long when fast > slow (uptrend)
+        signals = (fast_ma > slow_ma).astype(float)
+        return signals
+
+    def calculate_absolute_momentum_signals(self):
+        """Calculate absolute momentum signals (1 if return > 0, else 0)."""
+        if len(self.returns) < self.abs_lookback:
+            lookback_returns = self.returns
+        else:
+            lookback_returns = self.returns.iloc[-self.abs_lookback:]
+
+        cumulative = (1 + lookback_returns).prod() - 1
+        signals = (cumulative > 0).astype(float)
+        return signals
+
+    def calculate_trend_signals(self):
+        """Calculate trend signals based on selected method."""
+        if self.signal_type == 'ma_crossover':
+            signals = self.calculate_ma_crossover_signals()
+        elif self.signal_type == 'absolute':
+            signals = self.calculate_absolute_momentum_signals()
+        else:
+            raise ValueError(f"Unknown signal_type: {self.signal_type}")
+
+        self.trend_signals = signals
+        return signals
+
+    def get_weights(self):
+        """Compute portfolio weights based on trend signals."""
+        signals = self.calculate_trend_signals()
+        n_trending = signals.sum()
+
+        if n_trending == 0:
+            # No trends: equal weight all (defensive)
+            weights = pd.Series(1.0 / len(self.returns.columns), index=self.returns.columns)
+            self.weights = weights
+            return weights
+
+        if self.position_sizing == 'equal':
+            weights = signals / n_trending
+
+        elif self.position_sizing == 'volatility_target':
+            # Scale by inverse volatility
+            asset_vols = self.returns.std() * np.sqrt(365)
+            asset_vols = asset_vols.replace(0, np.inf)
+            target_weights = signals / asset_vols
+            target_weights = target_weights.replace([np.inf, -np.inf], 0).fillna(0)
+
+            if target_weights.sum() > 0:
+                weights = target_weights / target_weights.sum()
+            else:
+                weights = signals / n_trending
+        else:
+            weights = signals / n_trending
+
+        self.weights = weights
+        return weights
+
+
+class RiskManagedMomentum(PortfolioStrategy):
+    """
+    Risk-Managed Momentum Portfolio (Barroso & Santa-Clara Method).
+
+    Combines cross-sectional momentum with volatility scaling to avoid
+    momentum crashes and improve risk-adjusted returns.
+
+    Key insight: Scale exposure inversely to recent portfolio volatility.
+
+    Reference:
+        Barroso, P., & Santa-Clara, P. (2015). Momentum Has Its Moments.
+        Journal of Financial Economics.
+    """
+
+    def __init__(self, returns, formation_period=21, vol_lookback=63,
+                 target_volatility=0.12, max_leverage=2.0, min_leverage=0.25,
+                 top_percentile=0.3):
+        """
+        Args:
+            returns: Historical returns DataFrame (T x N)
+            formation_period: Momentum lookback (default: 21)
+            vol_lookback: Volatility estimation window (default: 63)
+            target_volatility: Target portfolio vol (default: 0.12)
+            max_leverage: Cap on leverage (default: 2.0)
+            min_leverage: Floor on exposure (default: 0.25)
+            top_percentile: Momentum selection threshold (default: 0.3)
+        """
+        super().__init__(returns)
+        self.formation_period = formation_period
+        self.vol_lookback = vol_lookback
+        self.target_volatility = target_volatility
+        self.max_leverage = max_leverage
+        self.min_leverage = min_leverage
+        self.top_percentile = top_percentile
+        self.raw_weights = None
+        self.realized_volatility = None
+        self.vol_scaling_factor = None
+
+    def calculate_momentum_scores(self):
+        """Calculate momentum scores (cumulative returns)."""
+        if len(self.returns) < self.formation_period:
+            formation_returns = self.returns
+        else:
+            formation_returns = self.returns.iloc[-(self.formation_period+1):-1]
+
+        return (1 + formation_returns).prod() - 1
+
+    def select_momentum_assets(self):
+        """Select top momentum assets."""
+        scores = self.calculate_momentum_scores()
+        n_select = max(1, int(len(scores) * self.top_percentile))
+        return scores.sort_values(ascending=False).head(n_select).index.tolist()
+
+    def calculate_raw_momentum_weights(self):
+        """Calculate raw (unscaled) momentum portfolio weights."""
+        selected = self.select_momentum_assets()
+        weights = pd.Series(0.0, index=self.returns.columns)
+        weights[selected] = 1.0 / len(selected)
+        self.raw_weights = weights
+        return weights
+
+    def calculate_realized_volatility(self):
+        """Estimate recent realized volatility of the momentum portfolio."""
+        raw_weights = self.calculate_raw_momentum_weights()
+
+        if len(self.returns) < self.vol_lookback:
+            vol_returns = self.returns
+        else:
+            vol_returns = self.returns.iloc[-self.vol_lookback:]
+
+        # Portfolio returns with raw weights
+        portfolio_returns = (vol_returns * raw_weights).sum(axis=1)
+
+        # Annualized volatility
+        realized_vol = portfolio_returns.std() * np.sqrt(365)
+        self.realized_volatility = realized_vol
+        return realized_vol
+
+    def calculate_vol_scaling_factor(self):
+        """Calculate volatility scaling factor with leverage bounds."""
+        realized_vol = self.calculate_realized_volatility()
+
+        if realized_vol == 0 or np.isnan(realized_vol):
+            scaling = 1.0
+        else:
+            scaling = self.target_volatility / realized_vol
+
+        # Apply leverage bounds
+        scaling = np.clip(scaling, self.min_leverage, self.max_leverage)
+        self.vol_scaling_factor = scaling
+        return scaling
+
+    def get_weights(self):
+        """Compute risk-managed momentum weights with volatility scaling."""
+        raw_weights = self.calculate_raw_momentum_weights()
+        scaling = self.calculate_vol_scaling_factor()
+
+        # Scale weights
+        scaled_weights = raw_weights * scaling
+
+        # Normalize to sum to 1 (long-only, no actual leverage)
+        if scaled_weights.sum() > 0:
+            weights = scaled_weights / scaled_weights.sum()
+        else:
+            weights = pd.Series(1.0 / len(self.returns.columns), index=self.returns.columns)
+
+        self.weights = weights
+        return weights
+
+
+class MomentumHRP(PortfolioStrategy):
+    """
+    Combined Momentum Selection + HRP Weighting Strategy.
+
+    Two-stage approach:
+        1. Use cross-sectional momentum to select top-performing assets
+        2. Apply HRP to allocate weights among selected assets
+
+    Combines momentum's alpha generation with HRP's diversification benefits.
+    """
+
+    def __init__(self, returns, formation_period=21, top_percentile=0.4,
+                 bottom_exclude=0.2, min_assets=5):
+        """
+        Args:
+            returns: Historical returns DataFrame (T x N)
+            formation_period: Momentum lookback (default: 21)
+            top_percentile: Assets to include (default: 0.4)
+            bottom_exclude: Assets to exclude (default: 0.2)
+            min_assets: Minimum assets for HRP (default: 5)
+        """
+        super().__init__(returns)
+        self.formation_period = formation_period
+        self.top_percentile = top_percentile
+        self.bottom_exclude = bottom_exclude
+        self.min_assets = min_assets
+        self.momentum_scores = None
+        self.selected_assets = None
+        self.hrp_weights_subset = None
+
+    def calculate_momentum_scores(self):
+        """Calculate momentum scores for asset selection."""
+        if len(self.returns) < self.formation_period:
+            formation_returns = self.returns
+        else:
+            formation_returns = self.returns.iloc[-(self.formation_period+1):-1]
+
+        self.momentum_scores = (1 + formation_returns).prod() - 1
+        return self.momentum_scores
+
+    def select_assets_by_momentum(self):
+        """Select assets using momentum ranking with minimum diversification."""
+        scores = self.calculate_momentum_scores()
+        n_assets = len(scores)
+
+        # Calculate selection bounds
+        n_top = max(self.min_assets, int(n_assets * self.top_percentile))
+        n_exclude = int(n_assets * self.bottom_exclude)
+
+        # Rank by momentum
+        ranked = scores.sort_values(ascending=False)
+
+        # Exclude bottom, take from remaining
+        if n_exclude > 0 and n_exclude < len(ranked):
+            eligible = ranked.iloc[:-n_exclude]
+        else:
+            eligible = ranked
+
+        selected = eligible.head(n_top).index.tolist()
+
+        # Ensure minimum assets
+        if len(selected) < self.min_assets:
+            selected = ranked.head(self.min_assets).index.tolist()
+
+        self.selected_assets = selected
+        return selected
+
+    def get_weights(self):
+        """Compute Momentum+HRP weights."""
+        # Stage 1: Momentum selection
+        selected = self.select_assets_by_momentum()
+
+        # Stage 2: HRP on selected assets
+        subset_returns = self.returns[selected]
+
+        # Apply HRP to the subset
+        hrp = HRP(subset_returns)
+        hrp_weights = hrp.get_weights()
+        self.hrp_weights_subset = hrp_weights
+
+        # Map back to full universe
+        weights = pd.Series(0.0, index=self.returns.columns)
+        weights[selected] = hrp_weights
+
+        self.weights = weights
+        return weights
