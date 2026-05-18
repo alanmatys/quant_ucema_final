@@ -17,6 +17,7 @@ from src.portfolio_maker import (
     RiskManagedMomentum, MomentumHRP,
     HRPDenoised, HRPDetoned,
     HRPPartialCorr, HRPDynamic, HRPTailDep, HRPShrunkCov,
+    HRPVolStd, HRPTailDepShrunk,
     ERC, MaxDiv, NetworkRiskParity,
 )
 from src.denoising import (
@@ -64,6 +65,8 @@ __all__ = [
     "HRPDynamic",
     "HRPTailDep",
     "HRPShrunkCov",
+    "HRPVolStd",
+    "HRPTailDepShrunk",
     # Comparator strategies (Spec 07)
     "ERC",
     "MaxDiv",

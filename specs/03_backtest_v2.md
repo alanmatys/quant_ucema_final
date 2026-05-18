@@ -47,9 +47,13 @@ R2. **Price data**: `data/binance_usdt_pairs_pit_2019-2024_1d.csv` (PIT-augmente
 - HRP_Denoised ([Spec 01](01_denoising.md))
 - HRP_Detoned ([Spec 02](02_detoning.md))
 - HRP_PartialCorr ([Spec 06](06_hrp_variants.md))
-- HRP_Dynamic ([Spec 06](06_hrp_variants.md))
+- HRP_Dynamic_94 ([Spec 06](06_hrp_variants.md), λ = 0.94 — RiskMetrics default)
+- HRP_Dynamic_97 ([Spec 06](06_hrp_variants.md), λ = 0.97 — slower decay)
+- HRP_Dynamic_99 ([Spec 06](06_hrp_variants.md), λ = 0.99 — very slow decay)
 - HRP_TailDep ([Spec 06](06_hrp_variants.md)) — **headline** (promoted from appendix)
 - HRP_ShrunkCov ([Spec 06](06_hrp_variants.md)) — Ledoit-Wolf shrunk covariance baseline
+- HRP_VolStd ([Spec 06](06_hrp_variants.md) §2.5) — vol-standardized returns before correlation
+- HRP_TailDepShrunk ([Spec 06](06_hrp_variants.md) §2.6) — hybrid (Report 3 #1 pick)
 - IVP
 - MVP
 - ERC ([Spec 07](07_comparators.md))
@@ -67,10 +71,14 @@ R2. **Price data**: `data/binance_usdt_pairs_pit_2019-2024_1d.csv` (PIT-augmente
 - HODL BTC, HODL ETH
 - Equal-Weight (1/N)
 
-Total: **20 strategies** in the headline comparison
-(7 HRP variants + 5 risk-based/network comparators + 5 momentum + 3 baselines).
-Audit-corrected count after Spec 06 §2.4 (HRP_ShrunkCov) and Spec 07
-(ERC, MaxDiv, NRP) additions.
+Total: **24 strategies** in the headline comparison
+(11 HRP variants — incl. 3 EWMA λ values + HRP_VolStd + HRP_TailDepShrunk —
++ 5 risk-based/network comparators + 5 momentum + 3 baselines).
+
+Plus a **linkage-method robustness sweep** ([Spec 06](06_hrp_variants.md) §3.3):
+selected HRP variants (HRP, HRP_Detoned, HRP_TailDep, HRP_TailDepShrunk) rerun
+with `linkage_method ∈ {'single', 'average', 'complete', 'ward'}`. Reported in
+a separate appendix table (not bloated into the headline comparison).
 
 ### 2.3 Scenarios
 

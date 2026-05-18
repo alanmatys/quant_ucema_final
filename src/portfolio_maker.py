@@ -109,6 +109,20 @@ class HRP(PortfolioStrategy):
         >>> weights = hrp.get_weights()
     """
 
+    def __init__(self, returns: pd.DataFrame, linkage_method: str = "single") -> None:
+        """Initialize HRP with optional linkage method override.
+
+        Args:
+            returns: T x N returns DataFrame.
+            linkage_method: scipy linkage method ('single', 'average', 'complete',
+                'ward', etc.). Default 'single' preserves backward compatibility
+                with the original Lopez de Prado specification. Subclasses inherit
+                this attribute; override via `self.linkage_method = 'average'`
+                after construction, or pass through constructors that support it.
+        """
+        super().__init__(returns)
+        self.linkage_method = linkage_method
+
     @staticmethod
     def correl_dist(corr: pd.DataFrame) -> pd.DataFrame:
         """
@@ -258,7 +272,7 @@ class HRP(PortfolioStrategy):
 
         # Step 2: Hierarchical clustering
         condensed_dist = squareform(dist.values)
-        link = linkage(condensed_dist, "single")
+        link = linkage(condensed_dist, self.linkage_method)
 
         # Step 3: Quasi-diagonalization
         sort_ix = self.get_quasi_diag(link)
@@ -896,7 +910,7 @@ class HRPTailDep(HRP):
             dist = tail_dependence_distance(self.tail_dep)
             dist = (dist + dist.T) / 2
             condensed = squareform(dist.values, checks=False)
-            link = linkage(condensed, "single")
+            link = linkage(condensed, self.linkage_method)
             sort_ix = HRP.get_quasi_diag(link)
             sort_ix = self.corr.index[sort_ix].tolist()
             self.weights = HRP.get_rec_bipart(self.cov, sort_ix)
@@ -905,6 +919,69 @@ class HRPTailDep(HRP):
             # Fall back to base HRP on any failure (e.g. degenerate tail data)
             self.fallback_used = True
             return super().get_weights()
+
+
+class HRPVolStd(HRP):
+    """HRP using returns standardized by their rolling volatility (Spec 06 §2.5).
+
+    Standardizing returns by per-asset rolling volatility prevents the
+    clustering from being dominated by raw volatility scale differences
+    (e.g. BTC vs SHIB), surfacing genuine co-movement structure instead.
+    Closer in spirit to GARCH-standardized residuals.
+
+    Implementation: divide each daily return by its rolling-window std
+    (shifted by one day to avoid look-ahead), then compute Pearson
+    correlation on the standardized series. Covariance is kept as the
+    sample covariance of the raw returns (the standardization is for the
+    cluster topology, not the risk-allocation step).
+    """
+
+    def __init__(
+        self,
+        returns: pd.DataFrame,
+        vol_window: int = 30,
+        linkage_method: str = "single",
+    ) -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.vol_window = vol_window
+        rolling_vol = returns.rolling(window=vol_window, min_periods=10).std()
+        rolling_vol = rolling_vol.shift(1)
+        standardized = returns.div(rolling_vol).dropna(how="any")
+        if standardized.empty or standardized.shape[0] < 3:
+            # Insufficient data — fall back to vanilla correlation
+            return
+        new_corr = standardized.corr()
+        # Snap diagonal to unit and symmetrize
+        new_corr_vals = new_corr.values.copy()
+        np.fill_diagonal(new_corr_vals, 1.0)
+        new_corr_vals = (new_corr_vals + new_corr_vals.T) / 2
+        self.corr = pd.DataFrame(new_corr_vals, index=new_corr.index, columns=new_corr.columns)
+
+
+class HRPTailDepShrunk(HRPTailDep):
+    """Hybrid: lower-tail-dependence distance + Ledoit-Wolf shrunk covariance.
+
+    Combines Report 3's #1 recommended HRP extension for crypto:
+    *tail-dependence distance* for the dendrogram topology (so the clusters
+    reflect joint-crash behaviour, which is what long-only crypto risk
+    actually looks like) with *Ledoit-Wolf shrunk covariance* in the
+    recursive-bisection step (so the within-cluster weight allocation is
+    not dominated by sample-covariance noise).
+
+    Inherits the tail-dep `get_weights` path from `HRPTailDep` (which already
+    uses `self.cov` for bisection), so we only need to substitute `self.cov`
+    with the LW-shrunk version in `__init__`. Inherits the same fallback
+    behaviour: on degenerate tail data the parent class falls back to base
+    HRP, which then uses the shrunk covariance.
+    """
+
+    def __init__(self, returns: pd.DataFrame, q: float = 0.05) -> None:
+        super().__init__(returns, q=q)
+        lw = LedoitWolf(assume_centered=False)
+        lw.fit(returns.values)
+        cov_shrunk = lw.covariance_
+        self.cov = pd.DataFrame(cov_shrunk, index=self.cov.index, columns=self.cov.columns)
+        self.shrinkage_intensity = float(lw.shrinkage_)
 
 
 # =============================================================================

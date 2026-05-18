@@ -15,7 +15,7 @@ from src.hrp_variants import (
 )
 from src.portfolio_maker import (
     HRP, HRPDenoised, HRPDetoned, HRPPartialCorr, HRPDynamic, HRPTailDep,
-    HRPShrunkCov,
+    HRPShrunkCov, HRPVolStd, HRPTailDepShrunk,
 )
 
 
@@ -134,6 +134,81 @@ class TestHRPVariantsWeights:
 
     def test_hrp_shrunkcov(self):
         self._check(HRPShrunkCov(self.returns).get_weights())
+
+    def test_hrp_volstd(self):
+        self._check(HRPVolStd(self.returns).get_weights())
+
+    def test_hrp_taildep_shrunk(self):
+        self._check(HRPTailDepShrunk(self.returns, q=0.10).get_weights())
+
+
+class TestLinkageMethodParameter:
+    """Linkage method is configurable on the base HRP class (default 'single')."""
+
+    def setup_method(self):
+        self.returns = _make_returns(T=500, N=12)
+
+    def test_default_is_single(self):
+        model = HRP(self.returns)
+        assert model.linkage_method == "single"
+
+    def test_can_override_linkage(self):
+        for method in ("average", "complete", "ward"):
+            model = HRP(self.returns, linkage_method=method)
+            assert model.linkage_method == method
+            w = model.get_weights()
+            assert abs(w.sum() - 1.0) < 1e-8
+
+    def test_linkage_attribute_propagates_to_subclass(self):
+        # Subclasses inherit the attribute through super().__init__().
+        # Default remains 'single' even though subclasses don't expose
+        # linkage_method in their own constructors — can be set after construction.
+        model = HRPDenoised(self.returns)
+        assert model.linkage_method == "single"
+        model.linkage_method = "average"
+        w = model.get_weights()
+        assert abs(w.sum() - 1.0) < 1e-8
+
+
+class TestHRPVolStdSemantics:
+    """HRPVolStd produces a different correlation matrix than vanilla HRP."""
+
+    def test_volstd_corr_differs_from_sample_corr(self):
+        # Build returns with one high-vol and several low-vol assets.
+        rng = np.random.default_rng(11)
+        T = 800
+        low_vol = rng.standard_normal((T, 5)) * 0.5
+        high_vol = rng.standard_normal((T, 5)) * 3.0
+        data = np.hstack([low_vol, high_vol])
+        cols = [f"L{i}" for i in range(5)] + [f"H{i}" for i in range(5)]
+        returns = pd.DataFrame(data, columns=cols)
+
+        sample_corr = returns.corr().values
+        vs_model = HRPVolStd(returns, vol_window=30)
+        vs_corr = vs_model.corr.values
+        # The two correlation matrices must not be element-wise identical
+        assert not np.allclose(sample_corr, vs_corr, atol=1e-4), (
+            "vol-standardization had no effect on the correlation matrix"
+        )
+
+
+class TestHRPTailDepShrunkSemantics:
+    """HRPTailDepShrunk records LW shrinkage intensity and uses shrunk cov."""
+
+    def test_shrinkage_intensity_recorded(self):
+        returns = _make_returns(T=600, N=15)
+        model = HRPTailDepShrunk(returns, q=0.10)
+        _ = model.get_weights()
+        assert 0.0 <= model.shrinkage_intensity <= 1.0
+
+    def test_uses_shrunk_cov_not_sample(self):
+        returns = _make_returns(T=600, N=15)
+        model = HRPTailDepShrunk(returns, q=0.10)
+        sample_cov = returns.cov().values
+        # The class overrides self.cov with the LW-shrunk version on init
+        assert not np.allclose(model.cov.values, sample_cov, atol=1e-6), (
+            "HRPTailDepShrunk did not replace self.cov with the shrunk version"
+        )
 
 
 class TestShrunkCovIntensity:

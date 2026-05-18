@@ -77,6 +77,63 @@ R4.3. Record the optimal shrinkage intensity `α ∈ [0, 1]` as a diagnostic
 
 R4.4. Hyperparameter: none required — Ledoit-Wolf chooses `α` analytically.
 
+### 2.5 HRP Vol-Standardized Returns (HRP_VolStd)
+
+R5.1. Standardize each daily return by its per-asset **rolling window
+      standard deviation** (default window = 30 days), shifted one day to
+      avoid look-ahead bias, then compute Pearson correlation on the
+      standardized series.
+
+R5.2. Use the resulting correlation matrix for the dendrogram; keep the
+      sample covariance for recursive bisection (the standardization is
+      for cluster topology, not weight allocation).
+
+R5.3. Rationale: crypto assets have wildly heterogeneous volatilities
+      (BTC vs SHIB). Standardizing first surfaces co-movement structure
+      that would otherwise be drowned out by the raw vol scale.
+
+R5.4. Hyperparameter: vol_window (default 30 days; grid 21 / 30 / 60 for
+      sensitivity in Backtest v2).
+
+### 2.6 HRP Tail-Dep + Shrunk Cov Hybrid (HRP_TailDepShrunk)
+
+R6.1. Inherit from `HRPTailDep` (so the dendrogram is built from lower-tail
+      dependence distance per §2.3).
+
+R6.2. In `__init__`, ALSO compute Ledoit-Wolf shrunk covariance and
+      substitute it for `self.cov`. Recursive bisection then uses the
+      shrunk covariance for the inverse-variance weight allocation.
+
+R6.3. **Hybrid construction targets two distinct problems simultaneously:**
+   - tail-dependence distance — cluster topology that reflects joint
+     crash behaviour (the relevant risk for long-only crypto);
+   - LW shrinkage — variance-allocation step that doesn't get whipsawed
+     by sample-covariance noise.
+
+R6.4. Report 3's literally #1 paper-extension recommendation:
+   > "*el mejor 'default research paper extension' es... HRP de cola inferior
+   > + covarianza regularizada*"
+
+R6.5. Hyperparameter: `q` (tail quantile threshold; default 0.05). LW
+      shrinkage is parameter-free.
+
+**Empirical findings (Phase 3.5 smoke test, 2022-12-31 PIT snapshot, 27 assets, 730-day window):**
+- LW shrinkage intensity inside HRP_TailDepShrunk: `α = 0.094` (same as
+  HRP_ShrunkCov on the same snapshot — LW is purely a function of the
+  covariance and doesn't see the tail-dep distance).
+- **Spearman(HRP_TailDep weights, HRP_TailDepShrunk weights) = 0.995** —
+  on this universe the shrinkage is a small refinement, not a topology-
+  level change. Weight rankings essentially identical. The hybrid's value
+  is variance stability at the per-cluster bisection step, not a
+  re-ordering of the dendrogram.
+- This pattern mirrors the Spec 02 §4.4 finding (HRP_Detoned vs
+  HRP_PartialCorr Spearman = 0.99): when two HRP variants share their
+  topology source, they converge in weight space.
+- **Cross-topology pairs diverge more:** HRP_TailDep vs HRP_Detoned
+  Spearman = 0.79; HRP vs HRP_TailDep = 0.67. Topology choice (Pearson
+  vs detoned vs tail-dep) matters more for weights than the
+  variance-allocation refinement.
+
 **Empirical findings (Phase 2 smoke test, 2022-12-31 snapshot, 27 assets, 730-day window):**
 - LW shrinkage intensity `α = 0.094` — modest shrinkage; sample covariance is
   reasonably well-conditioned at T/N ≈ 27, but shrinkage is non-trivially positive.
@@ -122,7 +179,36 @@ class HRPTailDep(HRP):
 
 class HRPShrunkCov(HRP):
     def __init__(self, returns): ...   # Ledoit-Wolf, no hyperparameter
+
+class HRPVolStd(HRP):
+    def __init__(self, returns, vol_window: int = 30,
+                 linkage_method: str = "single"): ...
+
+class HRPTailDepShrunk(HRPTailDep):
+    def __init__(self, returns, q: float = 0.05): ...   # LW inside
 ```
+
+### 3.3 Linkage method robustness (cross-cutting)
+
+The base `HRP` class accepts `linkage_method` (default `'single'`, preserving
+the López de Prado convention and backward compatibility). All subclasses
+inherit `self.linkage_method`; for the backtest robustness check, override
+it after construction:
+```python
+model = HRPDetoned(returns)
+model.linkage_method = "average"
+```
+Spec 03 R5b records cluster-stability metrics across linkage methods.
+
+**Empirical sensitivity (Phase 3.5 smoke test, HRP_TailDepShrunk on 2022-12-31
+PIT snapshot, 27 assets):** changing linkage from `'single'` produces
+non-trivial weight shifts (L1 distance vs single-linkage):
+- `average` → 0.13 (N_eff rises 21.9 → 22.8, slightly more diversified)
+- `complete` → 0.25 (N_eff 21.8, similar concentration)
+- `ward` → 0.20 (N_eff 20.7, max weight 12.3% — most concentrated)
+
+Linkage choice has comparable magnitude to switching topology source. The
+Backtest v2 robustness sweep should not skip this.
 
 Each subclass overrides `self.corr` (and rebuilds `self.cov` consistently) before
 delegating to the inherited HRP pipeline — same pattern as `HRPDenoised`/`HRPDetoned`.
@@ -161,8 +247,19 @@ AC4. `HRPTailDep` produces valid weights on at least 80% of rebalance dates;
 AC5. `HRPShrunkCov` shrinkage intensity `α` is in [0, 1] on every rebalance
      date; reports the time-series of `α` as a paper diagnostic.
 
-AC6. Unit tests in `tests/test_hrp_variants.py` cover AC1 and basic numerical
-     properties of each helper function.
+AC6. `HRPVolStd` produces a measurably different correlation matrix than
+     vanilla sample correlation on heterogeneous-vol data (sanity check
+     that the standardization actually changes the topology).
+
+AC7. `HRPTailDepShrunk` records `shrinkage_intensity` in [0, 1] and overrides
+     `self.cov` with the LW-shrunk version (verified by `!= sample_cov`).
+
+AC8. Base `HRP.linkage_method` defaults to `'single'` and accepts any
+     valid scipy linkage string ('average', 'complete', 'ward'). Subclasses
+     inherit the attribute through `super().__init__()`.
+
+AC9. Unit tests in `tests/test_hrp_variants.py` cover AC1–AC8 and basic
+     numerical properties of each helper function.
 
 ## 5. Out of Scope
 
