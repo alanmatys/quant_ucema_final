@@ -31,11 +31,12 @@ new paper is traceable to one notebook and one (or a small set of) results CSV(s
 ### 2.1 Universe and data
 
 R1. **Point-in-time universe** per [08_universe.md](08_universe.md):
-   - Monthly snapshots, top-30 by market cap with entry/exit buffers.
-   - Source artifact: `data/pit_universe.csv` (per Spec 08 R6 — CSV
-     instead of parquet since the artifact is small and pyarrow is not a
-     project dependency).
+   - Monthly snapshots, **top-50** by rolling 30-day Binance USDT quote volume
+     with entry/exit buffers (revised from top-30 per Spec 08 R2).
+   - Source artifact: `data/pit_universe.csv`.
    - Includes assets later delisted (LUNA, FTT, etc.) to remove survivorship.
+   - 78 unique symbols across the window (65 originally + 13 first-supplement
+     + 15 second-supplement); steady-state ~49 included per snapshot.
 
 R2. **Price data**: `data/binance_usdt_pairs_pit_2019-2024_1d.csv` (PIT-augmented
     version of the existing daily CSV — extended to include delisted pairs).

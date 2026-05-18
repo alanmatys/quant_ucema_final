@@ -73,6 +73,22 @@
     {"symbol": "TON",    "coingecko_id": "the-open-network",           "category": "l1"},
     {"symbol": "ANC",    "coingecko_id": "anchor-protocol",            "category": "delisted_collapsed"},
     {"symbol": "MIR",    "coingecko_id": "mirror-protocol",            "category": "delisted_collapsed"},
-    {"symbol": "SRM",    "coingecko_id": "serum",                      "category": "delisted_collapsed"}
+    {"symbol": "SRM",    "coingecko_id": "serum",                      "category": "delisted_collapsed"},
+
+    {"symbol": "1INCH",  "coingecko_id": "1inch",                      "category": "defi"},
+    {"symbol": "FET",    "coingecko_id": "fetch-ai",                   "category": "ai"},
+    {"symbol": "KAVA",   "coingecko_id": "kava",                       "category": "defi"},
+    {"symbol": "STX",    "coingecko_id": "blockstack",                 "category": "l2"},
+    {"symbol": "DYDX",   "coingecko_id": "dydx",                       "category": "defi"},
+    {"symbol": "RNDR",   "coingecko_id": "render-token",               "category": "infra"},
+    {"symbol": "MASK",   "coingecko_id": "mask-network",               "category": "infra"},
+    {"symbol": "ENS",    "coingecko_id": "ethereum-name-service",      "category": "infra"},
+    {"symbol": "IMX",    "coingecko_id": "immutable-x",                "category": "gaming"},
+    {"symbol": "AGIX",   "coingecko_id": "singularitynet",             "category": "ai"},
+    {"symbol": "GMX",    "coingecko_id": "gmx",                        "category": "defi"},
+    {"symbol": "BLUR",   "coingecko_id": "blur",                       "category": "infra"},
+    {"symbol": "PEPE",   "coingecko_id": "pepe",                       "category": "meme"},
+    {"symbol": "TIA",    "coingecko_id": "celestia",                   "category": "l1"},
+    {"symbol": "WLD",    "coingecko_id": "worldcoin-wld",              "category": "infra"}
   ]
 }

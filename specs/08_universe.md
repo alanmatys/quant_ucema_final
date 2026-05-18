@@ -32,13 +32,37 @@ standard liquidity proxy in academic crypto research. The methodological shift
 is documented in the paper and cited as a deliberate choice, not a workaround.
 A market-cap robustness check using Pro CoinGecko is reserved as future work.
 
+**Empirical finding (Phase 3.5, 2022-12-31 snapshot, going from N=27 → N=41
+by raising top_n from 30 to 50 and adding 15 new candidates):**
+- Spearman(HRP, HRP_VolStd) collapsed from 0.842 → **0.445**. Vol-standardization
+  was essentially a no-op at N=27 (top-tier majors share similar vol scale);
+  at N=41 it produces meaningfully different weights because mid-tier altcoins
+  with high vol get re-weighted.
+- Pairs sharing topology source remain near-perfect Spearman:
+  HRP_Detoned vs HRP_PartialCorr = 0.995, HRP_TailDep vs HRP_TailDepShrunk = 0.999.
+  These convergences are **structural**, not small-N artifacts.
+- LW shrinkage intensity dropped: 0.094 (N=27) → 0.051 (N=41). With more
+  observations relative to assets, the sample covariance is better conditioned
+  and needs less shrinkage. Reasonable behaviour confirming the LW estimator
+  is responding to T/N as expected.
+
+Operational note: at N≥40, `HRP_PartialCorr`'s GraphicalLasso may emit
+`slogdet` warnings. Tuning `alpha` from 0.05 to 0.10 stabilizes it. The
+weights remain valid in both cases but the warnings should be addressed
+in the Backtest v2 implementation.
+
 ## 2. Requirements
 
 R1. **Monthly universe snapshots** spanning Jan 2019 → Dec 2023, one per
     rebalance date.
 
 R2. **Selection criteria** (applied at each snapshot date):
-   - Top 30 by **rolling 30-day Binance USDT quote volume** on the snapshot date.
+   - Top **50** by **rolling 30-day Binance USDT quote volume** on the snapshot date.
+     (Revised from top-30 after the Phase 3.5 N-sensitivity smoke test
+     established that several variants — notably `HRP_VolStd` — only
+     differentiate from vanilla HRP once the universe is large enough to
+     include meaningfully heterogeneous vol scales. See empirical-findings
+     note at end of §1.)
    - Minimum age: 180 days of price history at that date.
    - Minimum median daily USD volume over the prior 30 days: $1M.
    - Excluded: stablecoins, wrapped tokens (WBTC, stETH, etc.), leveraged/inverse
