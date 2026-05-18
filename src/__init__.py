@@ -28,6 +28,11 @@ from src.hrp_variants import (
     partial_correlation_from_precision, estimate_partial_correlation,
     ewma_correlation, lower_tail_dependence, tail_dependence_distance,
 )
+from src.inference import (
+    optimal_block_length, stationary_block_bootstrap,
+    sharpe_diff_ledoit_wolf, hansen_spa_test,
+    cophenetic_correlation, adjusted_rand_between_snapshots,
+)
 from src.binance_data import get_historical_klines, get_usdt_symbols, get_symbols_from_list
 from src.coingecko_data import (
     get_historical_prices, get_multiple_coins_data,
@@ -80,6 +85,13 @@ __all__ = [
     "ewma_correlation",
     "lower_tail_dependence",
     "tail_dependence_distance",
+    # Statistical inference (Spec 09)
+    "optimal_block_length",
+    "stationary_block_bootstrap",
+    "sharpe_diff_ledoit_wolf",
+    "hansen_spa_test",
+    "cophenetic_correlation",
+    "adjusted_rand_between_snapshots",
     # Binance data utilities
     "get_historical_klines",
     "get_usdt_symbols",
