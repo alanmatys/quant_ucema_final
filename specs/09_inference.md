@@ -77,23 +77,46 @@ R4.3. K defaults to 5 (sectoral coarseness typical in crypto research);
 R4.4. Both metrics are computed by the backtest notebook per Spec 03 R5b and
       saved to `data/cluster_stability.csv`.
 
-**Empirical findings (Phase 4 smoke test, PIT universe snapshots 2022-12-31
-and 2023-12-31, N≈41 assets):**
+**Empirical findings — REVISED in Phase 4.5 after dataset expansion.**
 
-| Diagnostic | HRP (Pearson) | HRP_TailDep | Interpretation |
+The Phase 4 finding that "TailDep produces more stable clusters than
+Pearson" (ARI -0.047 vs 0.265) was **data-snooped from a single
+year-pair (2022→2023)**. Re-running on 5 consecutive year-end pairs
+across the expanded 2017-2026 dataset:
+
+| Period | N_t → N_{t+1} | ARI Pearson | ARI TailDep | Winner |
+|---|---|---|---|---|
+| 2020-12-31 → 2021-12-31 | 32 → 51 | -0.075 | -0.037 | TailDep (barely) |
+| 2021-12-31 → 2022-12-31 | 51 → 48 | **+0.470** | -0.039 | **Pearson** |
+| 2022-12-31 → 2023-12-31 | 48 → 51 | +0.000 | -0.038 | Pearson |
+| 2023-12-31 → 2024-12-31 | 51 → 50 | -0.075 | **+0.238** | TailDep |
+| 2024-12-31 → 2025-12-31 | 50 → 48 | **+0.280** | -0.024 | **Pearson** |
+| **mean** | | **+0.120** | **+0.020** | **Pearson** |
+
+**Corrected finding for the paper:** TailDep is NOT more stable than
+Pearson on average across the 2020-2025 window. Pearson ARI is higher
+in 3 of 5 year-pairs and higher on average (+0.12 vs +0.02). The
+original 2022→2023 pair was an unrepresentative single observation.
+
+The paper should report the multi-pair table above honestly. The
+economic argument for HRP_TailDep still stands (it captures joint-
+crash co-movement that Pearson misses), but the "more stable clusters"
+secondary argument does NOT hold up under multi-period scrutiny.
+
+**Cophenetic correlation (dendrogram faithfulness) is also higher for
+Pearson on most snapshots:**
+
+| Snapshot | N | Pearson | TailDep |
 |---|---|---|---|
-| cophenetic correlation, 2022-12-31 | 0.879 | 0.637 | Pearson distance more faithfully represented by dendrogram |
-| cophenetic correlation, 2023-12-31 | 0.851 | 0.700 | |
-| ARI between snapshots (K=5) | **-0.047** | **0.265** | Pearson clusters completely reshuffle year-over-year; tail-dep clusters are meaningfully more stable |
-| ARI between snapshots (K=3) | 0.000 | -0.030 | At coarser K, both partition randomly |
+| 2020-12-31 | 32 | 0.872 | 0.746 |
+| 2021-12-31 | 51 | 0.864 | 0.787 |
+| 2022-12-31 | 48 | 0.880 | 0.686 |
+| 2023-12-31 | 51 | 0.788 | 0.715 |
+| 2024-12-31 | 50 | 0.712 | 0.707 |
+| 2025-12-31 | 48 | 0.885 | 0.792 |
 
-**This is a paper-grade finding:** the Pearson HRP topology is essentially
-random across consecutive years on crypto data (ARI ≈ 0), while the tail-
-dependence topology preserves real structure (ARI = 0.27). This is the
-empirical case for `HRP_TailDep` / `HRP_TailDepShrunk` as headline strategies
-beyond their crash-risk economic motivation: they produce more STABLE
-dendrograms, which translates to lower realized turnover. Headline §10.1
-of the paper.
+Pearson dendrograms preserve their input distances more faithfully —
+the tail-dependence distance has higher dimensionality / noise.
 
 **Linkage method matters even on its own metric.** Cophenetic correlation
 of HRP at 2022-12-31 by linkage:
@@ -210,6 +233,62 @@ never going to give significant differentiation. The point of the
 smoke test is to confirm the inference machinery runs end-to-end and
 produces sensible point estimates and bootstrap distributions — both
 verified.
+
+---
+
+**Phase 4.5 re-analysis on the expanded 2024-2026 OOS window
+(2.5 years, T = 868 daily observations, 13 candidate strategies vs HRP
+baseline, static weights from 2023-12-31):**
+
+OOS performance (annualized Sharpe via daily returns × √365):
+
+| Strategy | Total return | Sharpe (ann.) | MaxDD | N_eff |
+|---|---|---|---|---|
+| MVP | **+58.4%** | **0.679** | -38.5% | 5.5 (concentrated) |
+| MaxDiv | -4.0% | 0.283 | -64.1% | 9.9 |
+| HRP_ShrunkCov | -14.9% | 0.170 | -64.9% | 27.2 |
+| HRP | -17.3% | 0.161 | -66.9% | 28.4 |
+| HRP_TailDep | -18.1% | 0.158 | -66.9% | 30.1 |
+| HRP_Denoised | -18.8% | 0.156 | -67.5% | 31.3 |
+| HRP_TailDepShrunk | -19.8% | 0.149 | -67.6% | 31.7 |
+| HRP_VolStd | -20.0% | 0.138 | -66.8% | 30.1 |
+| HRP_Detoned | -23.7% | 0.128 | -69.2% | 35.0 |
+| HRP_PartialCorr | -23.3% | 0.130 | -69.1% | 34.8 |
+| IVP | -23.3% | 0.130 | -69.1% | 34.8 |
+| HRP_Dynamic_94 | -25.7% | 0.078 | -66.5% | 24.4 |
+| NRP | -32.9% | 0.077 | -73.0% | 43.4 |
+| ERC | -33.0% | 0.081 | -73.5% | 46.6 |
+
+**Key finding for the paper — STATIC-WEIGHT OOS doesn't differentiate
+HRP variants.** The 13 HRP-family and risk-based comparators bunch
+in a narrow band (Sharpe 0.08–0.17). The two concentrated portfolios
+(MVP, MaxDiv) appear to "win," but this is a regime artifact: MVP
+concentrated 77% in BTC at end-2023, and BTC ran from $42k to $107k+
+over 2024-2026. The static-weight test rewards lucky concentration,
+not portfolio-construction skill.
+
+LW pairwise Sharpe diff tests vs HRP (annualized ΔSharpe):
+- HRP vs HRP_Dynamic_94: **p = 0.042** (HRP wins; dynamic correlation
+  hurt in this stable-trending regime).
+- HRP vs MVP: p = 0.062 (marginal; concentration won by luck).
+- All other pairs: p > 0.08, no detectable difference.
+
+Hansen SPA: across 13 candidates vs HRP, **p_consistent = 0.647,
+p_upper = 0.886** — cannot reject H0 that no strategy outperforms
+HRP after multiple-testing correction. Even MVP's apparent
+outperformance is not significant once we account for trying 13
+alternatives.
+
+Bootstrap 95% CIs (annualized Sharpe) are still very wide on 2.5-yr
+OOS: HRP CI [-1.13, +1.49]. Quarterly-rebalanced multi-year walk-
+forward (Backtest v2 Scenario B) is the only way to get tight CIs;
+single static-weight cuts can't.
+
+**Bottom line for paper-grade write-up:** the long static-weight OOS
+SHOULD NOT be the headline. Use it only as a "what if you bought and
+held the 2023 weights" sanity check. The real comparison is the
+monthly-rebalanced backtest with the inference framework wrapped
+around each strategy's full return path.
 
 ## 5. Out of Scope
 

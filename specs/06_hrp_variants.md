@@ -117,22 +117,44 @@ R6.4. Report 3's literally #1 paper-extension recommendation:
 R6.5. Hyperparameter: `q` (tail quantile threshold; default 0.05). LW
       shrinkage is parameter-free.
 
-**Empirical findings (Phase 3.5 smoke test, 2022-12-31 PIT snapshot, 27 assets, 730-day window):**
-- LW shrinkage intensity inside HRP_TailDepShrunk: `α = 0.094` (same as
-  HRP_ShrunkCov on the same snapshot — LW is purely a function of the
-  covariance and doesn't see the tail-dep distance).
-- **Spearman(HRP_TailDep weights, HRP_TailDepShrunk weights) = 0.995** —
-  on this universe the shrinkage is a small refinement, not a topology-
-  level change. Weight rankings essentially identical. The hybrid's value
-  is variance stability at the per-cluster bisection step, not a
-  re-ordering of the dendrogram.
-- This pattern mirrors the Spec 02 §4.4 finding (HRP_Detoned vs
-  HRP_PartialCorr Spearman = 0.99): when two HRP variants share their
-  topology source, they converge in weight space.
-- **Cross-topology pairs diverge more:** HRP_TailDep vs HRP_Detoned
-  Spearman = 0.79; HRP vs HRP_TailDep = 0.67. Topology choice (Pearson
-  vs detoned vs tail-dep) matters more for weights than the
-  variance-allocation refinement.
+**Empirical findings — Phase 4.5 re-analysis on expanded 2017-2026
+dataset, 6 year-end snapshots, 365-day window, top_n=50:**
+
+| Snapshot | N | Spearman(HRP_TailDep, HRP_TailDepShrunk) |
+|---|---|---|
+| 2020-12-31 | 32 | 0.999 |
+| 2021-12-31 | 51 | 0.998 |
+| 2022-12-31 | 48 | 1.000 |
+| 2023-12-31 | 51 | 1.000 |
+| 2024-12-31 | 50 | 1.000 |
+| 2025-12-31 | 48 | 0.998 |
+
+**Rock-solid 0.998-1.000 convergence across every regime tested.**
+This is the MOST ROBUST empirical convergence finding in the codebase.
+The hybrid's LW shrinkage is purely a within-cluster bisection
+refinement — it does NOT re-order the dendrogram.
+
+This pattern mirrors the Spec 02 finding (HRP_Detoned vs HRP_PartialCorr
+Spearman 0.87-0.998 across regimes), but is even tighter because the
+shared topology source here is byte-for-byte identical (both use the
+same tail-dependence distance matrix), whereas detoning and partial
+correlation use mathematically different routes to the same goal.
+
+**Cross-topology pairs diverge meaningfully** (also from the multi-
+snapshot smoke test):
+
+| Snapshot | N | Spearman(HRP, HRP_TailDep) |
+|---|---|---|
+| 2020-12-31 | 32 | 0.854 |
+| 2021-12-31 | 51 | 0.653 |
+| 2022-12-31 | 48 | 0.574 |
+| 2023-12-31 | 51 | 0.733 |
+| 2024-12-31 | 50 | 0.544 |
+| 2025-12-31 | 48 | 0.559 |
+
+At N≈50, cross-topology Spearman is 0.54-0.73 — substantial divergence.
+At N=32 (early window), the divergence shrinks to 0.85 — confirms the
+N-sensitivity pattern from Spec 03 R1.
 
 **Empirical findings (Phase 2 smoke test, 2022-12-31 snapshot, 27 assets, 730-day window):**
 - LW shrinkage intensity `α = 0.094` — modest shrinkage; sample covariance is
@@ -221,17 +243,32 @@ AC1. All three variants produce weights that sum to 1.0 (tol 1e-8), non-negative
 
 AC2. `HRPPartialCorr` and `HRPDetoned` allocations on the crypto universe show
      **highly correlated** weight vectors — empirical Spearman rank correlation
-     ≥ 0.80 on average across rebalance dates, evidence they target the same
+     consistently ≥ 0.85 across rebalance dates, evidence they target the same
      goal (market-mode removal) via different math.
 
-     **Empirical finding (Phase 2 smoke test, 2022-12-31 PIT snapshot, 27 assets,
-     730-day estimation window):** Spearman ρ = **0.990** — the two approaches
-     converge to nearly identical weight rankings. This is a stronger
-     equivalence than the spec's original guess of [0.4, 0.9] and **should be
-     reported as a headline finding** in the continuation paper's §9.4 (see
-     [04_paper.md](04_paper.md#7-acceptance-criteria) AC8). Original guess
-     overestimated the divergence because synthetic random-loading data has a
-     weaker market mode than real crypto.
+     **Empirical finding (Phase 4.5 re-analysis, expanded 2017-2026 dataset,
+     6 year-end PIT snapshots, 365-day estimation window, top_n=50):**
+
+     | Snapshot | N | Spearman(Detoned, PartialCorr) |
+     |---|---|---|
+     | 2020-12-31 | 32 | 0.997 |
+     | 2021-12-31 | 51 | **0.872** |
+     | 2022-12-31 | 48 | 0.991 |
+     | 2023-12-31 | 51 | 0.996 |
+     | 2024-12-31 | 50 | **0.887** |
+     | 2025-12-31 | 48 | 0.998 |
+
+     **Mostly 0.99+ convergence, but with two regime exceptions (~0.87) at
+     2021 bull peak and 2024 ETF-approval transition.** The convergence
+     is structural but not invariant — when the dominant eigenvector of
+     the correlation matrix shifts dramatically year-over-year, the
+     spectral (detoning) and precision-matrix (partial correlation)
+     routes pick slightly different "market modes" and weights diverge
+     modestly.
+
+     The original Phase 2 finding (0.990 at 2022-12-31) was real but
+     understated the regime variance. Paper should report the 6-snapshot
+     table, not the single-point value.
 
 AC3. `HRPDynamic` weights demonstrate measurable response to regime shifts:
      average absolute weight change between consecutive rebalances is **strictly

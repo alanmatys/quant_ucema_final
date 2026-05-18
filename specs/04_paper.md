@@ -104,26 +104,30 @@ C6. **Unified, fully reproducible backtest** with single-notebook output and
    - 9.3 **Denoising and detoning effects on HRP** (closes MACI future-work)
    - 9.4 **Detoning vs partial correlation** — empirical comparison of the two
         routes to market-mode neutralization (C2).
-        **Preliminary finding to report (Phase 2 smoke test, 2022-12-31, 27 assets,
-        730-day window): Spearman ρ between HRPDetoned and HRPPartialCorr weight
-        vectors = 0.990 — the two routes converge to nearly identical weight
-        rankings in practice.** Backtest v2 must reproduce this across all
-        rebalance dates and report the time-series of the ρ statistic + scatter
-        of weights on a representative date as `paper/figures/detoning_vs_partial_corr.png`.
+        **Updated finding (Phase 4.5 re-analysis across 6 year-end snapshots
+        in the expanded 2017-2026 dataset):** Spearman ρ between HRPDetoned
+        and HRPPartialCorr weight vectors is **0.87-0.998** depending on
+        regime — mostly 0.99+ but drops to ~0.87 during the 2021 bull peak
+        and 2024 ETF-approval transition where the dominant eigenvector
+        shifts dramatically. The convergence is structural but not
+        invariant. Backtest v2 must reproduce the time-series of the ρ
+        statistic across all rebalance dates (not a single point estimate)
+        and report it as `paper/figures/detoning_vs_partial_corr.png`.
    - 9.5 EWMA-dynamic HRP and regime sensitivity (C3)
    - 9.5b **Lower-tail-dependence HRP** — headline result for the crypto
         crash-risk story (revised promotion)
    - 9.5c **Shrunk-covariance HRP** — does Ledoit-Wolf shrinkage alone
         explain the gains, or is denoising/detoning adding value beyond it?
-        **Preliminary finding (Phase 2 smoke test, 2022-12-31 PIT snapshot):**
-        LW shrinkage intensity α = 0.094 (modest). Spearman(HRP, HRP_ShrunkCov)
-        = 0.83 vs Spearman(HRP_Detoned, HRP_ShrunkCov) = 0.66. This
-        contrasts sharply with the §9.4 finding that detoning and partial
-        correlation converge to ρ = 0.99, and shows that **shrinkage and
-        detoning are doing genuinely different work** (variance stability
-        vs market-mode removal). Backtest v2 must report whether shrinkage
-        alone closes the Sharpe gap to denoised/detoned variants, or whether
-        the eigenvalue-based methods add value on top of shrinkage.
+        **Preliminary finding (Phase 2 smoke test, 2022-12-31 PIT snapshot,
+        N=27):** LW shrinkage intensity α = 0.094. Spearman(HRP, HRP_ShrunkCov)
+        = 0.83 vs Spearman(HRP_Detoned, HRP_ShrunkCov) = 0.66 at that single
+        snapshot. **Phase 4.5 multi-snapshot re-analysis confirmed the
+        topology vs refinement distinction holds across regimes:**
+        HRP_TailDep vs HRP_TailDepShrunk Spearman = 0.998-1.000 across all
+        6 snapshots tested (shrinkage is a refinement; topology source
+        is what reorders weights). Backtest v2 must report the multi-snapshot
+        Sharpe-gap analysis (Spec 09 §4 mini-backtest documented this is
+        not testable on static-weight OOS alone).
    - 9.6 Comparator benchmarks (IVP, MVP, ERC, MaxDiv, NRP)
    - 9.7 Momentum strategies
    - 9.8 Hybrid Momentum + HRP (and detoned variant)
@@ -135,6 +139,15 @@ C6. **Unified, fully reproducible backtest** with single-notebook output and
         assignments. Addresses "which distance metric produces *stable*
         clusters vs noise". Stability matters as much as point-estimate
         Sharpe for a paper that argues a methodological change.
+        **Phase 4.5 re-analysis correction:** earlier Phase 4 finding
+        that "TailDep is more stable than Pearson" was data-snooped
+        from a single year-pair (2022→2023). Across 5 year-pairs
+        (2020-2025), Pearson ARI (mean +0.120) > TailDep ARI (mean
+        +0.020) — Pearson wins on 3 of 5 pairs. The paper must report
+        the full 5-pair table and NOT claim tail-dep produces more
+        stable clusters. The economic argument for HRP_TailDep stands
+        (joint-crash co-movement), but the secondary cluster-stability
+        argument does not hold up.
    - 9.10 Cost sensitivity (4 cost scenarios)
    - 9.11 Statistical inference results (LW pairwise, Hansen SPA, bootstrap CIs)
 10. **Discussion**
