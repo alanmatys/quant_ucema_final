@@ -1,0 +1,301 @@
+"""Point-in-time universe reconstruction (Binance liquidity-based).
+
+Builds a monthly point-in-time universe of top-N crypto USDT pairs ranked by
+rolling 30-day Binance quote volume, including pairs later delisted, to remove
+survivorship bias from the backtest. See specs/08_universe.md for the full spec
+and the methodology note explaining why we use Binance quote volume instead of
+CoinGecko market cap (free-tier history cap).
+
+Workflow:
+    1. From the curated candidate list, identify which USDT pairs need fetching
+       from Binance vs. which are already in the existing CSV.
+    2. Fetch missing pairs (including delisted ones such as LUNAUSDT, FTTUSDT)
+       from the Binance public klines endpoint.
+    3. Compute rolling 30-day quote_volume per symbol and aggregate to monthly
+       snapshots.
+    4. Apply selection rules (top-N, age, volume floor, exclusions, Binance
+       listing dates) with entry/exit buffers.
+    5. Emit data/pit_universe.csv plus a human-readable summary.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import time
+from pathlib import Path
+from typing import Iterable
+
+import numpy as np
+import pandas as pd
+import requests
+
+from src.binance_data import get_historical_klines
+
+
+# Stablecoins / wrappers / leveraged tokens excluded from the risky-asset universe.
+# Matches the exclusion list referenced in Spec 08 R2.
+DEFAULT_EXCLUDED_SYMBOLS: set[str] = {
+    # Fiat-backed stablecoins
+    "USDT", "USDC", "BUSD", "DAI", "TUSD", "USDP", "GUSD", "FRAX",
+    "USDD", "FDUSD", "PYUSD", "USDE",
+    # Wrappers / liquid-staking derivatives
+    "WBTC", "WETH", "STETH", "WSTETH", "RETH", "CBETH", "WBETH",
+    # Leveraged / inverse tokens
+    "BTCUP", "BTCDOWN", "ETHUP", "ETHDOWN",
+    # Exchange tokens of the execution venue (avoid endogeneity per Spec 08 R2)
+    "BNB",
+}
+
+
+def _load_dotenv(path: str | Path = ".env") -> None:
+    """Minimal .env loader — sets env vars from KEY=VALUE lines."""
+    p = Path(path)
+    if not p.exists():
+        return
+    for line in p.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+def load_candidates(path: str | Path = "data/coingecko_candidates.json") -> list[dict]:
+    """Load curated candidate coin list (returns list of {symbol, coingecko_id, category} dicts)."""
+    return json.loads(Path(path).read_text())["candidates"]
+
+
+def load_binance_listings(path: str | Path = "data/binance_listings_manual.json") -> dict[str, dict]:
+    """Load hand-curated Binance USDT listing/delisting dates.
+
+    Returns:
+        {symbol: {'listed_at': 'YYYY-MM-DD', 'delisted_at': 'YYYY-MM-DD' | None, 'notes': str}}
+    """
+    payload = json.loads(Path(path).read_text())
+    return {row["symbol"]: row for row in payload["listings"]}
+
+
+def fetch_binance_extended_prices(
+    symbols: Iterable[str],
+    start: str,
+    end: str,
+    cache_path: str | Path,
+    delay: float = 0.5,
+) -> pd.DataFrame:
+    """Fetch daily klines from Binance for a set of USDT pairs (incl. delisted).
+
+    Results are appended to a long-format CSV cache. On re-runs, symbols already
+    in the cache are skipped — only missing ones are fetched.
+
+    Args:
+        symbols: Bare symbol tickers (e.g. ["BTC", "ETH", "LUNA"]); "USDT" is appended.
+        start: ISO date string (inclusive) e.g. "2019-01-01".
+        end:   ISO date string (inclusive) e.g. "2024-01-01".
+        cache_path: CSV path to read existing data from and append to.
+        delay: Seconds to pause between symbol fetches.
+
+    Returns:
+        Long-format DataFrame with the columns of the existing repo CSV plus
+        a 'symbol' column. Includes all rows for the requested symbols in [start, end].
+    """
+    cache_path = Path(cache_path)
+    cached: pd.DataFrame | None = None
+    already_have: set[str] = set()
+
+    if cache_path.exists():
+        cached = pd.read_csv(cache_path, parse_dates=["open_time"])
+        already_have = set(cached["symbol"].unique())
+
+    to_fetch = [s for s in symbols if f"{s}USDT" not in already_have]
+    new_rows: list[pd.DataFrame] = []
+
+    for i, sym in enumerate(to_fetch):
+        pair = f"{sym}USDT"
+        try:
+            df = get_historical_klines(symbol=pair, interval="1d", start_str=start, end_str=end)
+        except Exception as exc:  # noqa: BLE001 — Binance returns various failures
+            print(f"  [{i+1}/{len(to_fetch)}] FAILED {pair}: {exc}")
+            time.sleep(delay)
+            continue
+
+        if df is None or df.empty:
+            print(f"  [{i+1}/{len(to_fetch)}] no data {pair}")
+            time.sleep(delay)
+            continue
+
+        df = df.reset_index()
+        df["symbol"] = pair
+        new_rows.append(df)
+        print(f"  [{i+1}/{len(to_fetch)}] {pair}: {len(df)} rows ({df['open_time'].min().date()} -> {df['open_time'].max().date()})")
+        time.sleep(delay)
+
+    if new_rows:
+        new = pd.concat(new_rows, ignore_index=True)
+        combined = pd.concat([cached, new], ignore_index=True) if cached is not None else new
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        combined.to_csv(cache_path, index=False)
+    else:
+        combined = cached if cached is not None else pd.DataFrame()
+
+    wanted = {f"{s}USDT" for s in symbols}
+    mask = (
+        combined["symbol"].isin(wanted)
+        & (combined["open_time"] >= pd.Timestamp(start))
+        & (combined["open_time"] <= pd.Timestamp(end))
+    )
+    return combined.loc[mask].reset_index(drop=True)
+
+
+def to_monthly_snapshots(prices: pd.DataFrame) -> pd.DataFrame:
+    """Reduce daily Binance price/volume frame to month-end snapshots.
+
+    Args:
+        prices: long DataFrame with [open_time, symbol, close, quote_volume, ...]
+
+    Returns:
+        DataFrame with [snapshot_date, symbol, rolling_quote_vol_30d, first_seen, close].
+        rolling_quote_vol_30d is the median of the prior 30 daily quote volumes.
+    """
+    df = prices[["open_time", "symbol", "close", "quote_volume"]].copy()
+    df = df.sort_values(["symbol", "open_time"])
+    df["rolling_quote_vol_30d"] = (
+        df.groupby("symbol")["quote_volume"]
+        .transform(lambda s: s.rolling(window=30, min_periods=10).median())
+    )
+    df["first_seen"] = df.groupby("symbol")["open_time"].transform("min")
+
+    df["month_end"] = df["open_time"] + pd.offsets.MonthEnd(0)
+    last_of_month = df.groupby(["symbol", "month_end"]).tail(1)
+
+    out = last_of_month.rename(columns={"month_end": "snapshot_date"})[
+        ["snapshot_date", "symbol", "rolling_quote_vol_30d", "first_seen", "close"]
+    ]
+    return out.sort_values(["snapshot_date", "rolling_quote_vol_30d"],
+                           ascending=[True, False]).reset_index(drop=True)
+
+
+def build_pit_universe(
+    monthly: pd.DataFrame,
+    top_n: int = 30,
+    min_age_days: int = 180,
+    min_median_volume_usd: float = 1_000_000.0,
+    excluded_symbols: set[str] | None = None,
+    entry_buffer_months: int = 2,
+    exit_buffer_months: int = 1,
+    binance_listings: dict[str, dict] | None = None,
+) -> pd.DataFrame:
+    """Build the monthly point-in-time universe with entry/exit buffers.
+
+    At each snapshot date:
+      1. Drop excluded symbols (stables, wrappers, exchange tokens).
+      2. Apply age + 30d-median-volume + listing/delisting window filters.
+      3. Take top-N by rolling quote volume as the "candidate" set.
+      4. Apply entry buffer (must be candidate for K consecutive months to enter)
+         and exit buffer (stays in M months after dropping below).
+
+    Args:
+        monthly: DataFrame from `to_monthly_snapshots` — uses pair symbols (e.g. BTCUSDT).
+        top_n: number of top-volume symbols per snapshot.
+        min_age_days, min_median_volume_usd, excluded_symbols, *_buffer_months:
+            Spec 08 R2/R3.
+        binance_listings: optional mapping from `load_binance_listings`; if a symbol
+            has a listed_at later than snapshot_date or a delisted_at earlier than
+            snapshot_date, it's filtered out.
+
+    Returns:
+        Long DataFrame: [date, symbol, rolling_quote_vol_30d, included].
+    """
+    excluded = excluded_symbols or DEFAULT_EXCLUDED_SYMBOLS
+    df = monthly.copy()
+    df["bare_symbol"] = df["symbol"].str.replace("USDT", "", regex=False)
+    df["age_days"] = (df["snapshot_date"] - df["first_seen"]).dt.days
+
+    # Hard filters
+    eligible = df[~df["bare_symbol"].isin(excluded)].copy()
+    eligible = eligible[eligible["age_days"] >= min_age_days]
+    eligible = eligible[eligible["rolling_quote_vol_30d"].fillna(0) >= min_median_volume_usd]
+
+    # Listing window filter
+    if binance_listings:
+        def listed_in_window(row: pd.Series) -> bool:
+            meta = binance_listings.get(row["bare_symbol"])
+            if not meta:
+                return True
+            listed_at = pd.Timestamp(meta["listed_at"]) if meta.get("listed_at") else None
+            delisted_at = pd.Timestamp(meta["delisted_at"]) if meta.get("delisted_at") else None
+            if listed_at is not None and row["snapshot_date"] < listed_at:
+                return False
+            if delisted_at is not None and row["snapshot_date"] > delisted_at:
+                return False
+            return True
+        eligible = eligible[eligible.apply(listed_in_window, axis=1)]
+
+    # Top-N candidate set per snapshot
+    candidate_flags: dict[pd.Timestamp, set[str]] = {}
+    for snap, group in eligible.groupby("snapshot_date"):
+        top = group.nlargest(top_n, "rolling_quote_vol_30d")
+        candidate_flags[snap] = set(top["symbol"])
+
+    # Entry/exit buffers across snapshot timeline
+    snapshots = sorted(candidate_flags.keys())
+    all_symbols = sorted({s for snap_set in candidate_flags.values() for s in snap_set})
+    included_state: dict[str, dict[pd.Timestamp, bool]] = {}
+
+    for sym in all_symbols:
+        candidate_streak = 0
+        out_streak = 0
+        currently_in = False
+        included_state[sym] = {}
+        for snap in snapshots:
+            is_candidate = sym in candidate_flags[snap]
+            if is_candidate:
+                candidate_streak += 1
+                out_streak = 0
+                if not currently_in and candidate_streak >= entry_buffer_months:
+                    currently_in = True
+            else:
+                candidate_streak = 0
+                out_streak += 1
+                if currently_in and out_streak > exit_buffer_months:
+                    currently_in = False
+            included_state[sym][snap] = currently_in
+
+    # Build long output
+    rows = []
+    for snap in snapshots:
+        snap_df = eligible[eligible["snapshot_date"] == snap]
+        for _, row in snap_df.iterrows():
+            sym = row["symbol"]
+            rows.append({
+                "date": snap,
+                "symbol": sym,
+                "rolling_quote_vol_30d": row["rolling_quote_vol_30d"],
+                "included": included_state.get(sym, {}).get(snap, False),
+            })
+
+    out = pd.DataFrame(rows)
+    return out.sort_values(["date", "rolling_quote_vol_30d"],
+                           ascending=[True, False]).reset_index(drop=True)
+
+
+def load_pit_universe(path: str | Path = "data/pit_universe.csv") -> pd.DataFrame:
+    """Load the built PIT universe artifact."""
+    return pd.read_csv(path, parse_dates=["date"])
+
+
+def summarize_pit_universe(pit: pd.DataFrame) -> pd.DataFrame:
+    """Produce a human-readable per-snapshot summary.
+
+    Returns one row per snapshot date with: n_included, n_eligible, included_symbols.
+    """
+    rows = []
+    for snap, group in pit.groupby("date"):
+        included = group[group["included"]].sort_values("rolling_quote_vol_30d", ascending=False)
+        rows.append({
+            "date": snap,
+            "n_eligible": len(group),
+            "n_included": len(included),
+            "included_symbols": ",".join(included["symbol"].tolist()),
+        })
+    return pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
