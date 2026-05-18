@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 from scipy.cluster.hierarchy import linkage
 from scipy.optimize import minimize
+from scipy.sparse.csgraph import minimum_spanning_tree
 from scipy.spatial.distance import squareform
 
 from sklearn.covariance import LedoitWolf
@@ -904,3 +905,164 @@ class HRPTailDep(HRP):
             # Fall back to base HRP on any failure (e.g. degenerate tail data)
             self.fallback_used = True
             return super().get_weights()
+
+
+# =============================================================================
+# COMPARATOR STRATEGIES — ERC, MaxDiv, Network Risk Parity (Spec 07)
+# =============================================================================
+
+class ERC(PortfolioStrategy):
+    """Equal Risk Contribution portfolio (Maillard, Roncalli & Teïletche 2010).
+
+    Solves for long-only, fully-invested weights such that each asset
+    contributes equally to portfolio risk:
+
+        RC_i = w_i * (Σw)_i ≈ constant for all i
+
+    Implementation: SLSQP minimization of the sum of squared deviations
+    between actual and target risk contributions (uniform 1/N target).
+    """
+
+    def get_weights(self) -> pd.Series:
+        cov = self.cov.values
+        n = cov.shape[0]
+        target = 1.0 / n
+        x0 = np.full(n, 1.0 / n)
+
+        def objective(w: np.ndarray) -> float:
+            portfolio_var = float(w @ cov @ w)
+            if portfolio_var <= 0:
+                return 1e8
+            marginal_risk = cov @ w
+            rc = w * marginal_risk / portfolio_var  # normalized RC, sums to 1
+            return float(np.sum((rc - target) ** 2))
+
+        constraints = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
+        bounds = [(1e-8, 1.0) for _ in range(n)]
+        result = minimize(
+            objective, x0, method="SLSQP",
+            bounds=bounds, constraints=constraints,
+            options={"maxiter": 500, "ftol": 1e-12},
+        )
+        w = np.clip(result.x, 0, None)
+        w = w / w.sum()
+        self.weights = pd.Series(w, index=self.cov.index)
+        return self.weights
+
+
+class MaxDiv(PortfolioStrategy):
+    """Maximum Diversification portfolio (Choueifaty & Coignard 2008).
+
+    Maximizes the diversification ratio:
+
+        DR(w) = (w' · σ) / sqrt(w' · Σ · w)
+
+    Long-only, fully invested. Implementation: SLSQP minimization of -DR(w).
+    """
+
+    def get_weights(self) -> pd.Series:
+        cov = self.cov.values
+        vols = np.sqrt(np.diag(cov))
+        n = cov.shape[0]
+        x0 = np.full(n, 1.0 / n)
+
+        def neg_div_ratio(w: np.ndarray) -> float:
+            numer = float(w @ vols)
+            denom = float(np.sqrt(max(w @ cov @ w, 1e-16)))
+            return -numer / denom
+
+        constraints = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
+        bounds = [(0.0, 1.0) for _ in range(n)]
+        result = minimize(
+            neg_div_ratio, x0, method="SLSQP",
+            bounds=bounds, constraints=constraints,
+            options={"maxiter": 500, "ftol": 1e-12},
+        )
+        w = np.clip(result.x, 0, None)
+        w = w / w.sum()
+        self.weights = pd.Series(w, index=self.cov.index)
+        return self.weights
+
+
+class NetworkRiskParity(PortfolioStrategy):
+    """Network Risk Parity (Ciciretti & Pallotta 2024).
+
+    Builds a Minimum Spanning Tree (MST) from the correlation-derived distance
+    matrix, then allocates weights inverse to a combination of asset volatility
+    and MST node degree. Highly connected (hub) assets receive less weight,
+    diversifying away from common-factor exposure.
+
+    Weighting (default 'inverse_degree'):
+        w_i ∝ 1 / (σ_i × (degree_i + 1))     # +1 prevents leaf-only concentration
+        then normalized to sum to 1.
+
+    Args:
+        returns: T x N returns DataFrame.
+        network_type: 'mst' (default) — PMFG reserved as future work.
+        centrality: 'inverse_degree' (default) or 'inverse_eigenvector'.
+    """
+
+    def __init__(
+        self,
+        returns: pd.DataFrame,
+        network_type: str = "mst",
+        centrality: str = "inverse_degree",
+    ) -> None:
+        super().__init__(returns)
+        if network_type != "mst":
+            raise NotImplementedError("Only MST is implemented; PMFG is future work.")
+        self.network_type = network_type
+        self.centrality = centrality
+        self.mst_edges: Optional[list[tuple[int, int]]] = None
+        self.degrees: Optional[pd.Series] = None
+
+    def _build_mst(self) -> np.ndarray:
+        """Build MST adjacency from correlation distance d_ij = sqrt(0.5 (1 - ρ))."""
+        corr = self.corr.values
+        dist = np.sqrt(np.maximum(0.5 * (1 - corr), 0))
+        np.fill_diagonal(dist, 0.0)
+        mst_sparse = minimum_spanning_tree(dist)
+        # scipy MST returns upper-triangular; symmetrize
+        mst_dense = mst_sparse.toarray()
+        mst_adj = (mst_dense + mst_dense.T) > 0
+        return mst_adj.astype(int)
+
+    def get_weights(self) -> pd.Series:
+        mst_adj = self._build_mst()
+        n = mst_adj.shape[0]
+
+        # Record edges and degree for diagnostics
+        edges = []
+        for i in range(n):
+            for j in range(i + 1, n):
+                if mst_adj[i, j]:
+                    edges.append((i, j))
+        self.mst_edges = edges
+        degrees = mst_adj.sum(axis=1)
+        self.degrees = pd.Series(degrees, index=self.corr.index)
+
+        vols = np.sqrt(np.diag(self.cov.values))
+        vols = np.where(vols <= 0, 1e-12, vols)
+
+        if self.centrality == "inverse_degree":
+            inverse_score = 1.0 / (vols * (degrees + 1))
+        elif self.centrality == "inverse_eigenvector":
+            # Power iteration for the dominant eigenvector of the adjacency
+            v = np.ones(n) / np.sqrt(n)
+            for _ in range(200):
+                v_new = mst_adj @ v
+                norm = np.linalg.norm(v_new)
+                if norm < 1e-12:
+                    break
+                v_new = v_new / norm
+                if np.max(np.abs(v_new - v)) < 1e-10:
+                    break
+                v = v_new
+            ev_centrality = np.abs(v)
+            inverse_score = 1.0 / (vols * (ev_centrality + 1e-6))
+        else:
+            raise ValueError(f"unknown centrality: {self.centrality}")
+
+        w = inverse_score / inverse_score.sum()
+        self.weights = pd.Series(w, index=self.cov.index)
+        return self.weights

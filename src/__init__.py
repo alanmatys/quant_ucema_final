@@ -17,6 +17,7 @@ from src.portfolio_maker import (
     RiskManagedMomentum, MomentumHRP,
     HRPDenoised, HRPDetoned,
     HRPPartialCorr, HRPDynamic, HRPTailDep, HRPShrunkCov,
+    ERC, MaxDiv, NetworkRiskParity,
 )
 from src.denoising import (
     mp_pdf, fit_max_eigenvalue,
@@ -63,6 +64,10 @@ __all__ = [
     "HRPDynamic",
     "HRPTailDep",
     "HRPShrunkCov",
+    # Comparator strategies (Spec 07)
+    "ERC",
+    "MaxDiv",
+    "NetworkRiskParity",
     "mp_pdf",
     "fit_max_eigenvalue",
     "denoise_corr_constant_residual",
