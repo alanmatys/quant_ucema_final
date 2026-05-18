@@ -35,8 +35,17 @@ R1. **Point-in-time universe** per [08_universe.md](08_universe.md):
      with entry/exit buffers (revised from top-30 per Spec 08 R2).
    - Source artifact: `data/pit_universe.csv`.
    - Includes assets later delisted (LUNA, FTT, etc.) to remove survivorship.
-   - 78 unique symbols across the window (65 originally + 13 first-supplement
-     + 15 second-supplement); steady-state ~49 included per snapshot.
+   - **91 unique symbols** in the underlying price dataset, **87 ever-included**
+     in the PIT universe, **38 dropped during the window** (Phase 4.5 expansion).
+   - **Date range: 2017-08-17 → 2026-05-18** (≈ 9 years; 100 monthly snapshots).
+
+R1b. **Estimation window**: 365 days (rolling) at each rebalance snapshot,
+    with a per-asset min-periods filter requiring ≥ 180 daily observations
+    in the window. Assets failing the filter are dropped from that
+    snapshot's strategy universe (logged, not crashed). Rationale:
+    several newer assets are admitted via the 180-day age filter (Spec 08
+    R2) but don't yet have 730 days of history; the 365-day window
+    accommodates these without artificially shrinking the universe.
 
 R2. **Price data**: `data/binance_usdt_pairs_pit_2019-2024_1d.csv` (PIT-augmented
     version of the existing daily CSV — extended to include delisted pairs).

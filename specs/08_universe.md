@@ -32,6 +32,25 @@ standard liquidity proxy in academic crypto research. The methodological shift
 is documented in the paper and cited as a deliberate choice, not a workaround.
 A market-cap robustness check using Pro CoinGecko is reserved as future work.
 
+**Phase 4.5 dataset expansion (2026-05-18):** dataset window extended to
+the full available Binance history. Now spans **2017-08-17 → 2026-05-18**
+(roughly 9 years vs. the original 5). Candidate pool expanded again with
+12 prominent 2024-2025 listings (JUP, ENA, PYTH, ORDI, SUI, SEI, JTO,
+BONK, WIF, DYM, STRK, MANTA) for a total of **91 unique symbols** in the
+dataset and **87 ever-included** symbols in the PIT universe. **38 assets
+dropped during the window** (vs 27 before), further amplifying the
+survivorship-bias fix. 100 monthly snapshots (vs 56 before).
+
+**Estimation-window guidance for the backtest:** several newer assets
+(JUP, ENA, WIF, …) are admitted to the PIT universe via the 180-day
+age filter but don't have 730 days of history yet at the time of
+inclusion. Backtest v2 must use a 365-day estimation window (not 730)
+with a per-asset min-periods filter (require ≥ 180 daily observations
+per asset; drop assets failing this from the snapshot's strategy
+universe). On a 2025-12-31 smoke test all 48 included assets passed
+the 180-day filter with 365-day lookback — the constraint binds for
+newer entrants only.
+
 **Empirical finding (Phase 3.5, 2022-12-31 snapshot, going from N=27 → N=41
 by raising top_n from 30 to 50 and adding 15 new candidates):**
 - Spearman(HRP, HRP_VolStd) collapsed from 0.842 → **0.445**. Vol-standardization

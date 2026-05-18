@@ -82,67 +82,133 @@ def fetch_binance_extended_prices(
     end: str,
     cache_path: str | Path,
     delay: float = 0.5,
+    additional_caches: list[str | Path] | None = None,
 ) -> pd.DataFrame:
-    """Fetch daily klines from Binance for a set of USDT pairs (incl. delisted).
+    """Fetch daily klines from Binance with window-aware caching.
 
-    Results are appended to a long-format CSV cache. On re-runs, symbols already
-    in the cache are skipped — only missing ones are fetched.
+    For each requested symbol:
+    - If not in cache, fetches the full [start, end] range.
+    - If cached but the cached window doesn't cover [start, end], fetches
+      only the missing prefix (start → first_cached - 1 day) and suffix
+      (last_cached + 1 day → end), then appends to cache.
 
     Args:
         symbols: Bare symbol tickers (e.g. ["BTC", "ETH", "LUNA"]); "USDT" is appended.
-        start: ISO date string (inclusive) e.g. "2019-01-01".
-        end:   ISO date string (inclusive) e.g. "2024-01-01".
+        start: ISO date string (inclusive) e.g. "2017-01-01".
+        end:   ISO date string (inclusive) e.g. "2026-05-18".
         cache_path: CSV path to read existing data from and append to.
         delay: Seconds to pause between symbol fetches.
+        additional_caches: Optional list of read-only cache files to consult
+            when computing coverage (e.g. the original repo CSV); their data
+            is NOT modified, but they're used to decide what's already covered.
 
     Returns:
         Long-format DataFrame with the columns of the existing repo CSV plus
-        a 'symbol' column. Includes all rows for the requested symbols in [start, end].
+        a 'symbol' column. Includes all rows for the requested symbols in [start, end]
+        from BOTH the primary cache and additional_caches.
     """
     cache_path = Path(cache_path)
-    cached: pd.DataFrame | None = None
-    already_have: set[str] = set()
+    start_ts = pd.Timestamp(start)
+    end_ts = pd.Timestamp(end)
 
+    # Read all caches to determine current coverage per symbol
+    cached_frames: list[pd.DataFrame] = []
+    primary_cached: pd.DataFrame | None = None
     if cache_path.exists():
-        cached = pd.read_csv(cache_path, parse_dates=["open_time"])
-        already_have = set(cached["symbol"].unique())
+        primary_cached = pd.read_csv(cache_path, parse_dates=["open_time"])
+        cached_frames.append(primary_cached)
+    if additional_caches:
+        for p in additional_caches:
+            p = Path(p)
+            if p.exists():
+                cached_frames.append(pd.read_csv(p, parse_dates=["open_time"]))
 
-    to_fetch = [s for s in symbols if f"{s}USDT" not in already_have]
+    all_cached = (
+        pd.concat(cached_frames, ignore_index=True).drop_duplicates(
+            subset=["symbol", "open_time"]
+        )
+        if cached_frames
+        else pd.DataFrame(columns=["symbol", "open_time"])
+    )
+
+    coverage: dict[str, tuple[pd.Timestamp, pd.Timestamp]] = {}
+    if not all_cached.empty:
+        for pair, group in all_cached.groupby("symbol"):
+            coverage[pair] = (group["open_time"].min(), group["open_time"].max())
+
     new_rows: list[pd.DataFrame] = []
+    symbols = list(symbols)
 
-    for i, sym in enumerate(to_fetch):
+    for i, sym in enumerate(symbols):
         pair = f"{sym}USDT"
-        try:
-            df = get_historical_klines(symbol=pair, interval="1d", start_str=start, end_str=end)
-        except Exception as exc:  # noqa: BLE001 — Binance returns various failures
-            print(f"  [{i+1}/{len(to_fetch)}] FAILED {pair}: {exc}")
-            time.sleep(delay)
-            continue
+        if pair in coverage:
+            cov_min, cov_max = coverage[pair]
+            ranges_to_fetch: list[tuple[str, str]] = []
+            # Missing prefix?
+            if start_ts < cov_min:
+                ranges_to_fetch.append((start, (cov_min - pd.Timedelta(days=1)).strftime("%Y-%m-%d")))
+            # Missing suffix?
+            if end_ts > cov_max:
+                ranges_to_fetch.append(((cov_max + pd.Timedelta(days=1)).strftime("%Y-%m-%d"), end))
+            if not ranges_to_fetch:
+                continue  # fully covered
+            label = "extend"
+        else:
+            ranges_to_fetch = [(start, end)]
+            label = "new"
 
-        if df is None or df.empty:
-            print(f"  [{i+1}/{len(to_fetch)}] no data {pair}")
-            time.sleep(delay)
-            continue
+        for sub_start, sub_end in ranges_to_fetch:
+            try:
+                df = get_historical_klines(
+                    symbol=pair, interval="1d", start_str=sub_start, end_str=sub_end
+                )
+            except Exception as exc:  # noqa: BLE001
+                print(f"  [{i+1}/{len(symbols)}] FAILED {pair} {sub_start}->{sub_end}: {exc}")
+                time.sleep(delay)
+                continue
 
-        df = df.reset_index()
-        df["symbol"] = pair
-        new_rows.append(df)
-        print(f"  [{i+1}/{len(to_fetch)}] {pair}: {len(df)} rows ({df['open_time'].min().date()} -> {df['open_time'].max().date()})")
-        time.sleep(delay)
+            if df is None or df.empty:
+                print(f"  [{i+1}/{len(symbols)}] no data {pair} {sub_start}->{sub_end}")
+                time.sleep(delay)
+                continue
+
+            df = df.reset_index()
+            df["symbol"] = pair
+            new_rows.append(df)
+            print(
+                f"  [{i+1}/{len(symbols)}] {label} {pair} {sub_start}->{sub_end}: "
+                f"{len(df)} rows ({df['open_time'].min().date()} -> {df['open_time'].max().date()})"
+            )
+            time.sleep(delay)
 
     if new_rows:
         new = pd.concat(new_rows, ignore_index=True)
-        combined = pd.concat([cached, new], ignore_index=True) if cached is not None else new
+        combined_primary = (
+            pd.concat([primary_cached, new], ignore_index=True)
+            if primary_cached is not None
+            else new
+        )
+        combined_primary = combined_primary.drop_duplicates(subset=["symbol", "open_time"])
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        combined.to_csv(cache_path, index=False)
+        combined_primary.to_csv(cache_path, index=False)
     else:
-        combined = cached if cached is not None else pd.DataFrame()
+        combined_primary = primary_cached
+
+    # Build the return frame from all caches (primary + additional) + any new
+    pieces = [c for c in cached_frames if c is not None]
+    if new_rows:
+        pieces.append(pd.concat(new_rows, ignore_index=True))
+    if not pieces:
+        return pd.DataFrame()
+    combined = pd.concat(pieces, ignore_index=True).drop_duplicates(
+        subset=["symbol", "open_time"]
+    )
 
     wanted = {f"{s}USDT" for s in symbols}
     mask = (
         combined["symbol"].isin(wanted)
-        & (combined["open_time"] >= pd.Timestamp(start))
-        & (combined["open_time"] <= pd.Timestamp(end))
+        & (combined["open_time"] >= start_ts)
+        & (combined["open_time"] <= end_ts)
     )
     return combined.loc[mask].reset_index(drop=True)
 

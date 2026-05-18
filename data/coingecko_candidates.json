@@ -89,6 +89,19 @@
     {"symbol": "BLUR",   "coingecko_id": "blur",                       "category": "infra"},
     {"symbol": "PEPE",   "coingecko_id": "pepe",                       "category": "meme"},
     {"symbol": "TIA",    "coingecko_id": "celestia",                   "category": "l1"},
-    {"symbol": "WLD",    "coingecko_id": "worldcoin-wld",              "category": "infra"}
+    {"symbol": "WLD",    "coingecko_id": "worldcoin-wld",              "category": "infra"},
+
+    {"symbol": "JUP",    "coingecko_id": "jupiter-exchange-solana",    "category": "defi_solana"},
+    {"symbol": "ENA",    "coingecko_id": "ethena",                     "category": "defi"},
+    {"symbol": "PYTH",   "coingecko_id": "pyth-network",               "category": "infra_solana"},
+    {"symbol": "ORDI",   "coingecko_id": "ordinals",                   "category": "btc_brc20"},
+    {"symbol": "SUI",    "coingecko_id": "sui",                        "category": "l1"},
+    {"symbol": "SEI",    "coingecko_id": "sei-network",                "category": "l1"},
+    {"symbol": "JTO",    "coingecko_id": "jito-governance-token",      "category": "defi_solana"},
+    {"symbol": "BONK",   "coingecko_id": "bonk",                       "category": "meme_solana"},
+    {"symbol": "WIF",    "coingecko_id": "dogwifcoin",                 "category": "meme_solana"},
+    {"symbol": "DYM",    "coingecko_id": "dymension",                  "category": "l1"},
+    {"symbol": "STRK",   "coingecko_id": "starknet",                   "category": "l2"},
+    {"symbol": "MANTA",  "coingecko_id": "manta-network",              "category": "l2"}
   ]
 }

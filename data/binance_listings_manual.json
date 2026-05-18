@@ -57,6 +57,19 @@
     {"symbol": "BLUR",  "listed_at": "2023-02-14", "delisted_at": null,         "notes": "Blur listed Feb 2023"},
     {"symbol": "PEPE",  "listed_at": "2023-05-05", "delisted_at": null,         "notes": "PEPE listed May 2023"},
     {"symbol": "TIA",   "listed_at": "2023-10-31", "delisted_at": null,         "notes": "Celestia listed Oct 2023"},
-    {"symbol": "WLD",   "listed_at": "2023-07-24", "delisted_at": null,         "notes": "Worldcoin listed Jul 2023"}
+    {"symbol": "WLD",   "listed_at": "2023-07-24", "delisted_at": null,         "notes": "Worldcoin listed Jul 2023"},
+
+    {"symbol": "JUP",   "listed_at": "2024-01-31", "delisted_at": null,         "notes": "Jupiter (Solana DEX) listed Jan 2024"},
+    {"symbol": "ENA",   "listed_at": "2024-04-02", "delisted_at": null,         "notes": "Ethena listed Apr 2024"},
+    {"symbol": "PYTH",  "listed_at": "2023-11-22", "delisted_at": null,         "notes": "Pyth Network listed Nov 2023"},
+    {"symbol": "ORDI",  "listed_at": "2023-11-07", "delisted_at": null,         "notes": "Ordinals listed Nov 2023"},
+    {"symbol": "SUI",   "listed_at": "2023-05-03", "delisted_at": null,         "notes": "Sui listed May 2023"},
+    {"symbol": "SEI",   "listed_at": "2023-08-15", "delisted_at": null,         "notes": "Sei listed Aug 2023"},
+    {"symbol": "JTO",   "listed_at": "2023-12-07", "delisted_at": null,         "notes": "Jito listed Dec 2023"},
+    {"symbol": "BONK",  "listed_at": "2023-11-13", "delisted_at": null,         "notes": "Bonk listed Nov 2023"},
+    {"symbol": "WIF",   "listed_at": "2024-03-05", "delisted_at": null,         "notes": "dogwifhat listed Mar 2024"},
+    {"symbol": "DYM",   "listed_at": "2024-02-06", "delisted_at": null,         "notes": "Dymension listed Feb 2024"},
+    {"symbol": "STRK",  "listed_at": "2024-02-20", "delisted_at": null,         "notes": "Starknet listed Feb 2024"},
+    {"symbol": "MANTA", "listed_at": "2024-01-18", "delisted_at": null,         "notes": "Manta Network listed Jan 2024"}
   ]
 }
