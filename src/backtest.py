@@ -127,14 +127,38 @@ class WalkForwardBacktest:
         cost_model: CostModel | None = None,
         lookback_days: int = 365,
         min_periods: int = 180,
+        rebalance_mode: str = "calendar",
+        drift_threshold: float = 0.05,
+        smoothing_eta: float = 0.0,
+        min_trade_bps: float = 0.0,
+        capture_cluster_stability: bool = False,
         verbose: bool = False,
     ):
+        """
+        Args:
+            rebalance_mode: 'calendar' (every snapshot, current default),
+                'threshold' (only when max(|w_drift|) > drift_threshold), or
+                'threshold_smoothed' (threshold + linear blending via eta and
+                min-trade filter).
+            drift_threshold: triggers rebal in 'threshold' / 'threshold_smoothed'.
+            smoothing_eta: in [0, 1). w_traded = eta * w_prev + (1 - eta) * w_target.
+                Default 0 = no smoothing.
+            min_trade_bps: minimum per-asset weight delta in bps to actually trade.
+                Smaller deltas are reverted to prev weight.
+            capture_cluster_stability: if True, save linkage matrix per snapshot
+                so cophenetic + ARI can be computed downstream.
+        """
         self.prices = prices.sort_index()
         self.pit = pit_universe.sort_values("date")
         self.strategy_factory = strategy_factory
         self.cost_model = cost_model or COST_SCENARIOS["conservative_cex"]
         self.lookback_days = lookback_days
         self.min_periods = min_periods
+        self.rebalance_mode = rebalance_mode
+        self.drift_threshold = drift_threshold
+        self.smoothing_eta = smoothing_eta
+        self.min_trade_bps = min_trade_bps
+        self.capture_cluster_stability = capture_cluster_stability
         self.verbose = verbose
 
     def _included_at(self, snap: pd.Timestamp) -> list[str]:
@@ -190,23 +214,60 @@ class WalkForwardBacktest:
                     1.0 / train_returns.shape[1], index=train_returns.columns
                 )
 
-            # Compute L1 turnover and forced-liquidation share
+            # Apply rebalance-mode adjustments to compute traded weights
             current_universe = set(target_w.index[target_w > 0])
             if prev_weights.empty:
-                turnover = 1.0  # initial entry
+                traded_w = target_w
+                turnover = 1.0
                 liquidation_share = 0.0
             else:
-                # Align indices for L1 distance
                 full_idx = sorted(set(target_w.index) | set(prev_weights.index))
                 p = prev_weights.reindex(full_idx).fillna(0.0)
                 t = target_w.reindex(full_idx).fillna(0.0)
-                turnover = float((t - p).abs().sum())
-                # Forced liquidation = weight in prev that's no longer in any universe
                 exited = prev_universe - set(included)
-                liquidation_share = float(p.loc[list(exited)].sum()) if exited else 0.0
+                forced_sale_pct = float(p.loc[list(exited)].sum()) if exited else 0.0
+
+                if self.rebalance_mode == "threshold":
+                    # Only rebal if max abs weight drift exceeds threshold OR if
+                    # forced liquidation is required.
+                    max_drift = float((t - p).abs().max())
+                    if max_drift < self.drift_threshold and forced_sale_pct == 0.0:
+                        # Skip rebalance — hold previous weights
+                        traded_w = prev_weights
+                        turnover = 0.0
+                        liquidation_share = 0.0
+                    else:
+                        traded_w = target_w
+                        turnover = float((t - p).abs().sum())
+                        liquidation_share = forced_sale_pct
+                elif self.rebalance_mode == "threshold_smoothed":
+                    max_drift = float((t - p).abs().max())
+                    if max_drift < self.drift_threshold and forced_sale_pct == 0.0:
+                        traded_w = prev_weights
+                        turnover = 0.0
+                        liquidation_share = 0.0
+                    else:
+                        # Linear smoothing toward target
+                        smoothed = self.smoothing_eta * p + (1 - self.smoothing_eta) * t
+                        # Min-trade filter: revert per-asset deltas below threshold
+                        min_trade = self.min_trade_bps / 10_000.0
+                        delta = smoothed - p
+                        keep = delta.abs() >= min_trade
+                        smoothed = p + delta.where(keep, 0.0)
+                        # Renormalize
+                        smoothed = smoothed.clip(lower=0)
+                        if smoothed.sum() > 0:
+                            smoothed = smoothed / smoothed.sum()
+                        traded_w = smoothed.reindex(target_w.index, fill_value=0.0)
+                        turnover = float((smoothed - p).abs().sum())
+                        liquidation_share = forced_sale_pct
+                else:  # 'calendar' (default)
+                    traded_w = target_w
+                    turnover = float((t - p).abs().sum())
+                    liquidation_share = forced_sale_pct
 
             cost = self.cost_model.cost_pct(turnover, liquidation_share)
-            weights_history[snap] = target_w
+            weights_history[snap] = traded_w
             turnover_history[snap] = turnover
             cost_history[snap] = cost
 
@@ -226,10 +287,10 @@ class WalkForwardBacktest:
             if oos_window.empty:
                 continue
 
-            common = target_w.index.intersection(oos_window.columns)
+            common = traded_w.index.intersection(oos_window.columns)
             if len(common) == 0:
                 continue
-            gross_daily = (oos_window[common] * target_w[common]).sum(axis=1)
+            gross_daily = (oos_window[common] * traded_w[common]).sum(axis=1)
             # Apply cost on the FIRST day of holding (transaction settles at rebalance)
             net_daily = gross_daily.copy()
             if len(net_daily) > 0:
@@ -239,10 +300,10 @@ class WalkForwardBacktest:
 
             if self.verbose:
                 print(f"  {snap.date()}: N={train_returns.shape[1]}, "
-                      f"turn={turnover:.3f}, cost={cost:.4%}, max_wt={target_w.max():.4f}")
+                      f"turn={turnover:.3f}, cost={cost:.4%}, max_wt={traded_w.max():.4f}")
 
-            prev_weights = target_w
-            prev_universe = current_universe
+            prev_weights = traded_w
+            prev_universe = set(traded_w.index[traded_w > 0])
 
         full_daily = pd.concat(daily_returns).sort_index() if daily_returns else pd.Series(dtype=float)
         full_gross = pd.concat(gross_daily_returns).sort_index() if gross_daily_returns else pd.Series(dtype=float)

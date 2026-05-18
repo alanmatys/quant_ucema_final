@@ -347,3 +347,81 @@ the paper can use Conservative CEX as headline and refer to
 - `data/inference_spa.csv` — Hansen SPA across all candidates
 - `data/hrp_shrunkcov_intensity.csv` — LW α time-series for ShrunkCov variants
 - `data/backtest_v2_cost_sensitivity.csv` — 5 strategies × 4 cost scenarios
+
+---
+
+## 8. Phase 5b results (momentum + scenarios + cluster stability)
+
+### 8.1 Momentum strategies (Scenario B, same window/cost as §7)
+
+| Strategy | Arith Sharpe | Total Return | MaxDD | Avg Turnover |
+|---|---|---|---|---|
+| **MOM_HRP_Detoned** | **0.305** | +351% | -88.4% | 1.42 |
+| CS_MOM_vol21 | 0.233 | +228% | -89.2% | 1.42 |
+| CS_MOM_eq21 / RM_MOM | 0.216 | +210% | -90.0% | 1.40 |
+| TS_MOM_abs | 0.181 | +157% | -90.8% | 1.40 |
+| MOM_HRP | 0.136 | +106% | -92.6% | 1.44 |
+| TS_MOM_ma | 0.108 | +80% | -93.1% | 1.51 |
+
+**Headline finding:** all momentum families substantially underperformed
+the risk-based HRP family (Sharpe 0.69-0.75) in 2020-2026. Crypto momentum
+suffered from high turnover (~1.4x per rebalance = full portfolio
+reconstruction) and severe drawdowns (88-93%).
+
+**Notable: MOM_HRP_Detoned (0.305) more than doubles MOM_HRP (0.136).**
+Applying detoning to the HRP-within-momentum step substantially helps —
+the momentum-selected basket needs market-mode neutralization more than
+the full universe does, since momentum has already concentrated in
+trending names that co-move heavily.
+
+### 8.2 Scenario comparison (B / C / C')
+
+5 strategies × 3 rebalance modes (calendar 76 rebalances, threshold-5%,
+threshold-5% + smoothed eta=0.25 + 25 bps min-trade):
+
+| Strategy | B (calendar) | C (thresh 5%) | C' (smoothed) | Rebals (B/C/C') |
+|---|---|---|---|---|
+| HRP | 0.732 | **0.749** | 0.745 | 76 / 59 / 60 |
+| HRP_TailDep | 0.733 | 0.727 | 0.718 | 76 / 61 / 62 |
+| HRP_ShrunkCov | 0.748 | **0.752** | 0.745 | 76 / 60 / 60 |
+| MVP | 0.950 | 0.947 | 0.921 | 76 / 68 / 72 |
+| RM_MOM | 0.661 | 0.661 | 0.632 | 76 / 76 / 76 |
+
+**Finding:** threshold rebalancing (Scenario C) gives a small Sharpe
+uplift for HRP-family strategies (+0.017 for HRP, +0.004 for ShrunkCov)
+by skipping ~20% of calendar rebalances. Smoothing (Scenario C') trades
+off some Sharpe for further turnover reduction. **For momentum
+strategies, threshold rebalancing is no help** — their target weights
+drift so much each month that the threshold is always triggered.
+
+Output: `data/backtest_v2_threshold_results.csv` (15 rows).
+
+### 8.3 Cluster stability across 76 monthly snapshots
+
+| Metric | Pearson | TailDep |
+|---|---|---|
+| Average cophenetic correlation | **0.834** | 0.751 |
+| Average ARI vs previous snapshot (K=5) | **+0.785** | +0.639 |
+| Median ARI | **+0.840** | +0.639 |
+| Months where TailDep ARI > Pearson ARI | 21 / 75 (**28%**) | — |
+
+**Final retraction of the Phase 4 claim.** The original "TailDep clusters
+are more stable than Pearson" finding (ARI -0.047 vs +0.265, single
+year-pair) has now been replaced by 76-snapshot evidence: **Pearson
+clusters are substantially more stable, both in cophenetic correlation
+(0.83 vs 0.75) and month-over-month ARI (+0.79 vs +0.64).** The
+multi-snapshot Phase 5b cluster_stability.csv is the definitive
+reference; Spec 09 §2.4 already records the year-end 5-pair correction;
+this confirms it at monthly resolution.
+
+The economic argument for HRP_TailDep stands (joint-crash co-movement),
+but ALL secondary "stability" claims around tail-dependence vs Pearson
+are NEGATED by multi-snapshot evidence.
+
+Output: `data/cluster_stability.csv` (76 rows).
+
+**Phase 5b artifacts:**
+- `data/backtest_v2_threshold_results.csv` — 15 rows (5 strats × 3 scenarios)
+- `data/backtest_v2_static_results.csv` — 13 rows (Scenario A static)
+- `data/cluster_stability.csv` — 76 rows per-snapshot cluster diagnostics
+- `data/backtest_v2_rebalance_results.csv` — expanded to 19 strategies (was 12)
