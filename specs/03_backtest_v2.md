@@ -249,3 +249,101 @@ AC9. Headline cost-scenario figures (`Conservative CEX`) replicate qualitatively
 - Existing notebook [notebooks/backtesting.ipynb](../notebooks/backtesting.ipynb) — base loop to extend.
 - Existing notebook [notebooks/momentum_backtest.ipynb](../notebooks/momentum_backtest.ipynb) — momentum metrics to merge in.
 - Han, Y., et al. (2024). Realistic-assumption momentum in cryptocurrency.
+
+---
+
+## 7. Phase 5a results (headline run)
+
+**Setup:** Scenario B (monthly rebalancing) on the expanded PIT universe,
+2020-01-01 to 2026-05-18 (~6.3 years, 76 rebalances), Conservative CEX
+cost (10 bps fee + 2 bps slippage + 2× liquidation premium).
+
+| Strategy | Sharpe (ann) | Total Return | MaxDD | Avg N_eff | Avg Turnover |
+|---|---|---|---|---|---|
+| MVP | **0.950** | **+2035%** | -80.7% | 5.5 | 0.405 |
+| HODL_BTC | 0.867 | +1002% | -76.6% | 1.0 | — |
+| MaxDiv | 0.793 | +627% | -92.2% | 9.9 | 0.459 |
+| **HRP_ShrunkCov** | **0.748** | +436% | -84.4% | 27.2 | 0.308 |
+| HRP_TailDep | 0.733 | +396% | -85.2% | 30.1 | 0.317 |
+| HRP | 0.732 | +393% | -85.3% | 28.4 | 0.314 |
+| HRP_TailDepShrunk | 0.729 | +384% | -85.2% | 31.7 | 0.308 |
+| HRP_VolStd | 0.728 | +381% | -84.9% | 30.1 | 0.307 |
+| HRP_Detoned | 0.701 | +321% | -84.5% | 35.0 | 0.210 |
+| HRP_PartialCorr / IVP | 0.696 | +311% | -84.5% | 34.8 | 0.140 |
+| ERC | 0.686 | +277% | -85.9% | 46.6 | 0.131 |
+
+**Statistical inference (Spec 09 framework wrapped around each result):**
+
+- **Bootstrap 95% CIs (Sharpe, annualized):** only MVP [0.27, 1.58],
+  MaxDiv [0.00, 1.46], and HODL_BTC [0.06, 1.63] have CIs cleanly above
+  zero. All HRP-family variants have CIs straddling zero.
+
+- **LW Sharpe difference test vs HRP baseline:** **NONE of 11 candidates
+  reach p<0.05**. HRP_ShrunkCov beats HRP by 0.016 Sharpe (p=0.275, the
+  best HRP-family result). MVP beats HRP by 0.217 (p=0.20). HODL_BTC
+  beats HRP by 0.135 (p=0.56).
+
+- **Hansen SPA across all candidates:** **p_consistent = 0.526**, p_upper
+  = 0.870. **Cannot reject H0 that no strategy outperforms HRP** after
+  multiple-testing correction, even with 6.3 years of monthly-rebalanced
+  data and 11 candidates.
+
+**Cost sensitivity (5 key strategies × 4 cost scenarios):**
+
+Cost impact is small (Sharpe shifts <0.005 across {zero, conservative,
+optimistic, stress} scenarios). Rankings are robust. Crypto's low
+transaction costs at monthly cadence don't drive differentiation —
+the paper can use Conservative CEX as headline and refer to
+`data/backtest_v2_cost_sensitivity.csv` for the full grid.
+
+**Paper-grade findings to report (§9 of [04_paper.md](04_paper.md)):**
+
+1. **HRP_ShrunkCov is the best HRP-family variant** but improvement
+   over HRP is small (+0.016 Sharpe) and not statistically significant.
+   Validates the Phase 3.5 addition of LW shrinkage as a small refinement.
+
+2. **HRP_TailDep ties HRP exactly** (0.733 vs 0.732). The economic story
+   is validated (tail-dep doesn't hurt) but doesn't outperform — a
+   neutral finding worth reporting honestly.
+
+3. **HRP_TailDepShrunk does NOT beat HRP_TailDep** (0.729 vs 0.733).
+   Report 3's #1 hybrid recommendation does not produce the expected
+   improvement on this dataset. Contrary to the Phase 3.5 expectation.
+   Adding LW shrinkage on top of tail-dep distance was redundant
+   (per the 0.998-1.000 weight Spearman finding) and the small noise
+   it introduces slightly hurt.
+
+4. **Detoning/PartialCorr UNDERPERFORM HRP by ~0.03 Sharpe.** Removing
+   the market mode in a BTC-led bull market gave up alpha. The
+   economically-elegant approach paid the price for being too clever.
+
+5. **MVP "wins" by concentration luck.** It concentrates ~77% in BTC
+   throughout the period; BTC ran from $7k (2020) to $107k+ (2026).
+   Sharpe 0.95 with avg N_eff = 5.5. **Not skill — regime dependence.**
+   The paper must make this explicit.
+
+6. **HODL_BTC beats every diversified portfolio except MVP.** 0.87
+   Sharpe, 1002% total return. **A sobering finding the paper must
+   address: a passive 100% BTC position outperforms every diversified
+   risk-based portfolio considered.** Honest framing: "diversification
+   in crypto pays a cost during BTC-dominated regimes that is not
+   recovered by lower drawdowns on this sample."
+
+7. **Statistical conclusion:** with 6.3 years and 11 candidates, we
+   cannot reject the null that all HRP-family variants are equivalent
+   to baseline HRP. The methodological contributions of denoising,
+   detoning, partial correlation, EWMA, tail dependence, shrinkage,
+   vol standardization, and their combinations do not produce
+   statistically detectable Sharpe improvements at this sample size.
+   Future work: longer history or higher rebalance frequency may
+   resolve. For now, the paper's honest contribution is methodological
+   rigor + the empirical findings about variant convergence, not a
+   "HRP variant X beats baseline" claim.
+
+**Artifacts produced (Phase 5a):**
+- `data/backtest_v2_rebalance_results.csv` — 12-strategy summary metrics
+- `data/inference_bootstrap_cis.csv` — 95% block-bootstrap Sharpe CIs
+- `data/inference_sharpe_diff.csv` — LW pairwise p-values vs HRP
+- `data/inference_spa.csv` — Hansen SPA across all candidates
+- `data/hrp_shrunkcov_intensity.csv` — LW α time-series for ShrunkCov variants
+- `data/backtest_v2_cost_sensitivity.csv` — 5 strategies × 4 cost scenarios
