@@ -20,6 +20,16 @@ from scipy.cluster.hierarchy import linkage
 from scipy.optimize import minimize
 from scipy.spatial.distance import squareform
 
+from sklearn.covariance import LedoitWolf
+
+from src.denoising import denoise_corr_constant_residual, detone_corr
+from src.hrp_variants import (
+    estimate_partial_correlation,
+    ewma_correlation,
+    lower_tail_dependence,
+    tail_dependence_distance,
+)
+
 
 class PortfolioStrategy(ABC):
     """
@@ -767,3 +777,130 @@ class MomentumHRP(PortfolioStrategy):
 
         self.weights = weights
         return weights
+
+
+# =============================================================================
+# HRP VARIANTS — correlation-matrix modifications (Specs 01, 02, 06)
+# =============================================================================
+#
+# All variants below follow the same pattern: override __init__ to replace
+# self.corr (and rebuild self.cov consistently) before the inherited HRP
+# pipeline runs unchanged. HRPTailDep is the exception — it uses a tail-based
+# distance matrix, so it overrides get_weights too.
+
+
+def _rebuild_cov_from_corr(corr: pd.DataFrame, std: np.ndarray) -> pd.DataFrame:
+    """Reconstruct a covariance matrix from a corr matrix and a std vector."""
+    cov = corr.values * np.outer(std, std)
+    return pd.DataFrame(cov, index=corr.index, columns=corr.columns)
+
+
+class HRPDenoised(HRP):
+    """HRP using a Marchenko-Pastur denoised correlation matrix (Spec 01)."""
+
+    def __init__(self, returns: pd.DataFrame, bandwidth: float = 0.25) -> None:
+        super().__init__(returns)
+        T, N = returns.shape
+        if T <= N:
+            # MP requires q = T/N > 1; fall back to sample correlation
+            return
+        q = T / N
+        corr_denoised = denoise_corr_constant_residual(self.corr.values, q=q, bandwidth=bandwidth)
+        self.corr = pd.DataFrame(corr_denoised, index=self.corr.index, columns=self.corr.columns)
+        std = np.sqrt(np.diag(self.cov.values))
+        self.cov = _rebuild_cov_from_corr(self.corr, std)
+
+
+class HRPDetoned(HRPDenoised):
+    """HRP using a denoised + detoned correlation matrix (Spec 02)."""
+
+    def __init__(
+        self,
+        returns: pd.DataFrame,
+        bandwidth: float = 0.25,
+        n_market_components: int = 1,
+    ) -> None:
+        super().__init__(returns, bandwidth=bandwidth)
+        if returns.shape[0] <= returns.shape[1]:
+            return  # already fell back to sample; skip detoning too
+        corr_detoned = detone_corr(self.corr.values, n_market_components=n_market_components)
+        self.corr = pd.DataFrame(corr_detoned, index=self.corr.index, columns=self.corr.columns)
+        std = np.sqrt(np.diag(self.cov.values))
+        self.cov = _rebuild_cov_from_corr(self.corr, std)
+
+
+class HRPPartialCorr(HRP):
+    """HRP using a sparse partial-correlation matrix (Spec 06)."""
+
+    def __init__(self, returns: pd.DataFrame, alpha: float = 0.05) -> None:
+        super().__init__(returns)
+        pcorr = estimate_partial_correlation(returns, alpha=alpha)
+        self.corr = pcorr
+        std = np.sqrt(np.diag(self.cov.values))
+        self.cov = _rebuild_cov_from_corr(self.corr, std)
+
+
+class HRPDynamic(HRP):
+    """HRP using an EWMA correlation snapshot (Spec 06)."""
+
+    def __init__(self, returns: pd.DataFrame, lam: float = 0.94) -> None:
+        super().__init__(returns)
+        self.corr = ewma_correlation(returns, lam=lam)
+        std = np.sqrt(np.diag(self.cov.values))
+        self.cov = _rebuild_cov_from_corr(self.corr, std)
+
+
+class HRPShrunkCov(HRP):
+    """HRP using a Ledoit-Wolf shrunk covariance matrix (Spec 06 §2.4).
+
+    Stabilizes the covariance estimate by analytically blending the sample
+    covariance with a scaled-identity shrinkage target. The shrinkage
+    intensity α ∈ [0, 1] is chosen by the Ledoit-Wolf formula and saved as
+    `self.shrinkage_intensity` for paper diagnostics.
+    """
+
+    def __init__(self, returns: pd.DataFrame) -> None:
+        super().__init__(returns)
+        lw = LedoitWolf(assume_centered=False)
+        lw.fit(returns.values)
+        cov_shrunk = lw.covariance_
+        self.cov = pd.DataFrame(cov_shrunk, index=self.cov.index, columns=self.cov.columns)
+        std = np.sqrt(np.diag(cov_shrunk))
+        std = np.where(std <= 0, 1e-12, std)
+        corr_shrunk = cov_shrunk / np.outer(std, std)
+        np.fill_diagonal(corr_shrunk, 1.0)
+        corr_shrunk = (corr_shrunk + corr_shrunk.T) / 2
+        self.corr = pd.DataFrame(corr_shrunk, index=self.corr.index, columns=self.corr.columns)
+        self.shrinkage_intensity = float(lw.shrinkage_)
+
+
+class HRPTailDep(HRP):
+    """HRP using empirical lower-tail dependence as the distance (Spec 06).
+
+    Overrides `get_weights` because the distance matrix is built directly from
+    tail dependence rather than via the correlation→distance transform. Falls
+    back to base HRP on failure (insufficient tail observations, etc.),
+    logging via `self.fallback_used`.
+    """
+
+    def __init__(self, returns: pd.DataFrame, q: float = 0.05) -> None:
+        super().__init__(returns)
+        self.q = q
+        self.fallback_used = False
+        self.tail_dep: Optional[pd.DataFrame] = None
+
+    def get_weights(self) -> pd.Series:
+        try:
+            self.tail_dep = lower_tail_dependence(self.returns, q=self.q)
+            dist = tail_dependence_distance(self.tail_dep)
+            dist = (dist + dist.T) / 2
+            condensed = squareform(dist.values, checks=False)
+            link = linkage(condensed, "single")
+            sort_ix = HRP.get_quasi_diag(link)
+            sort_ix = self.corr.index[sort_ix].tolist()
+            self.weights = HRP.get_rec_bipart(self.cov, sort_ix)
+            return self.weights
+        except Exception:
+            # Fall back to base HRP on any failure (e.g. degenerate tail data)
+            self.fallback_used = True
+            return super().get_weights()
