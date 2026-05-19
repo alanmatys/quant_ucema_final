@@ -309,13 +309,32 @@ tokens and treasury holdings. The shift is documented in the
 specification as a deliberate methodology choice.
 
 \subsection{Survivorship-bias fix in numbers}
-Of the 87 symbols ever included in the PIT universe across 100
-monthly snapshots, 38 were dropped during the window before
-2026-05-18 (Figure~\ref{fig:pit_evol}). The MACI 2025 dataset
+After a code review surfaced residual survivorship bias (the prior
+candidate pool was a hand-curated selection of $\sim$90 symbols missing
+the long tail of delisted altcoins), the universe was expanded by
+pulling all 217 \texttt{status=BREAK} USDT pairs from Binance's
+\texttt{/api/v3/exchangeInfo}, filtering leveraged tokens and
+stablecoins, and adding 150 legitimate delisted altcoins to the
+candidate pool. The resulting PIT universe contains \textbf{146 ever-
+included symbols}, of which \textbf{97 were dropped during the window}
+before 2026-05-18 (Figure~\ref{fig:pit_evol}). The MACI 2025 dataset
 contained only 50 currently-trading symbols --- by construction it
-could not include LUNA, FTT, ANC, MIR, SRM, or the other crises this
-work explicitly captures. We treat liquidation of an exiting position
-at 2$\times$ normal slippage cost (Spec 03 \S2.4).
+could not include the assets this work explicitly captures.
+
+We treat liquidation of an exiting position at 2$\times$ normal
+slippage cost (Spec 03 \S2.4). On terminology: ``delisted'' in this
+paper means either Binance \texttt{status=BREAK} on the USDT pair
+(the conventional meaning), \emph{or} the token suffered an effective
+value collapse with subsequent rebranding. The latter category includes
+LUNA (the Terra Classic chain collapsed in May 2022; Binance renamed
+the original token to LUNC and reassigned the \texttt{LUNAUSDT} ticker
+to Terra 2.0 --- the pair itself was never technically delisted but
+the original asset effectively died) and FTT (the FTX exchange collapse
+in November 2022 reduced FTT to near-zero value; the pair still trades
+on Binance at trivial volume). Our \texttt{binance\_listings\_manual.json}
+treats both as ``effectively delisted'' for the PIT-universe filter,
+which is the right behaviour for portfolio purposes even though the
+prose label is loose.
 
 \begin{figure}[H]
   \centering
@@ -389,37 +408,45 @@ visualise the equity curves and the risk--return positioning.
 
 \begin{table}[H]
 \centering\small
-\caption{Scenario B headline results (Conservative CEX cost, 2020-2026).
-``Arith. Sharpe'' = mean / standard deviation $\times \sqrt{365}$.}
+\caption{Scenario B headline results (Conservative CEX cost, 2020-2026,
+expanded 146-symbol PIT universe, all four bug fixes applied).
+``Arith. Sharpe'' = mean / standard deviation $\times \sqrt{365}$.
+LW p-value column reports the Ledoit--Wolf Sharpe-difference test
+vs.\ baseline HRP.}
 \label{tab:scenarioB}
-\begin{tabular}{lrrrrrr}
+\begin{tabular}{lrrrr}
 \toprule
-Strategy & Arith. Sharpe & Total Return & Max DD & N\_eff & Turnover\\
+Strategy & Arith. Sharpe & Total Return & Avg Turnover & LW p vs HRP\\
 \midrule
-MVP                  & 0.950 & +2035\% & --81\% &  5.5 & 0.405\\
-HODL\_BTC            & 0.867 & +1003\% & --77\% &  1.0 & ---\\
-MaxDiv               & 0.793 &  +627\% & --92\% &  9.9 & 0.459\\
-\textbf{HRP\_ShrunkCov} & \textbf{0.748} & +436\% & --84\% & 27.2 & 0.308\\
-HRP\_TailDep         & 0.733 &  +396\% & --85\% & 30.1 & 0.317\\
-HRP (baseline)       & 0.732 &  +393\% & --85\% & 28.4 & 0.314\\
-HRP\_TailDepShrunk   & 0.729 &  +384\% & --85\% & 31.7 & 0.308\\
-HRP\_VolStd          & 0.728 &  +381\% & --85\% & 30.1 & 0.307\\
-HRP\_Detoned         & 0.701 &  +321\% & --85\% & 35.0 & 0.210\\
-HRP\_PartialCorr     & 0.696 &  +311\% & --85\% & 34.8 & 0.140\\
-IVP                  & 0.696 &  +311\% & --85\% & 34.8 & 0.140\\
-ERC                  & 0.686 &  +277\% & --86\% & 46.6 & 0.131\\
-\midrule
-\multicolumn{6}{l}{\emph{Momentum (Scenario B)}}\\
-MOM\_HRP\_Detoned    & 0.305 &  +351\% & --88\% & 12.0 & 1.420\\
-CS\_MOM\_vol21       & 0.233 &  +228\% & --89\% & 13.0 & 1.416\\
-CS\_MOM\_eq21        & 0.216 &  +210\% & --90\% & 14.4 & 1.399\\
-RM\_MOM              & 0.216 &  +210\% & --90\% & 14.4 & 1.399\\
-TS\_MOM\_abs         & 0.181 &  +157\% & --91\% & 14.6 & 1.405\\
-MOM\_HRP             & 0.136 &  +106\% & --93\% & 11.5 & 1.444\\
-TS\_MOM\_ma          & 0.108 &   +80\% & --93\% & 11.5 & 1.508\\
+\textbf{MVP}             & \textbf{1.057} & \textbf{+2867\%} & 0.381 & 0.067\\
+HRP\_Dynamic\_94         & 0.749 & +442\%  & 0.474 & 0.813\\
+HRP\_ShrunkCov           & 0.746 & +428\%  & 0.353 & 0.757\\
+\textbf{HRP (baseline)}  & \textbf{0.741} & \textbf{+418\%} & 0.360 & ---\\
+HRP\_VolStd              & 0.735 & +402\%  & 0.368 & 0.733\\
+MOM\_HRP                 & 0.726 & +351\%  & 1.436 & 0.870\\
+HRP\_Contrastive (NEW)   & 0.723 & +371\%  & 0.392 & 0.457\\
+HRP\_NodeEmbed   (NEW)   & 0.721 & +369\%  & 0.368 & 0.453\\
+MaxDiv                   & 0.719 & +364\%  & 0.553 & 0.893\\
+HRP\_PathSig     (NEW)   & 0.714 & +351\%  & 0.383 & 0.293\\
+HRP\_TailDep / HRP\_Detoned & 0.708 & +335\% & 0.365 & 0.127\\
+HRP\_TailDepShrunk       & 0.701 & +318\%  & 0.352 & \textbf{0.050}\\
+HRP\_TS2Vec      (NEW)   & 0.699 & +318\%  & 0.394 & 0.107\\
+HRP\_PartialCorr / IVP   & 0.697 & +311\%  & 0.182 & 0.217\\
+ERC                      & 0.663 & +233\%  & 0.195 & \textbf{0.050}\\
+CS\_MOM\_eq21            & 0.663 & +217\%  & 1.420 & 0.503\\
+RM\_MOM (fixed)          & 0.663 & +118\%  & 0.366 & 0.507\\
+HODL\_BTC                & 0.519 & ---     & ---   & 0.597\\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\paragraph{Two strategies marginal at $p=0.05$.} HRP\_TailDepShrunk
+($-0.041$ Sharpe vs HRP) and ERC ($-0.079$ vs HRP) are right at the
+significance threshold. No other strategy is significantly different
+from baseline HRP after the bug-fix re-run (Phase 8 of the
+spec-driven plan). The earlier Phase 5d ``embeddings significantly
+worse than HRP'' finding was an artifact of the median-volume +
+skip-OOS bugs.
 
 \begin{figure}[H]
   \centering
@@ -438,11 +465,26 @@ TS\_MOM\_ma          & 0.108 &   +80\% & --93\% & 11.5 & 1.508\\
   \label{fig:risk_return}
 \end{figure}
 
-\paragraph{HRP family bunches.} All seven HRP variants lie within
-0.05 Sharpe of each other (0.696--0.748). HRP\_ShrunkCov is
-marginally the best HRP-family member, but the improvement over
-baseline HRP (+0.016 Sharpe) is small and, per
-\S\ref{sec:results-inference} below, not statistically significant.
+\paragraph{HRP family bunches.} All 11 HRP variants (including the
+four embedding-based variants added in Phase 8) lie within 0.05
+Sharpe of each other (0.697--0.749). HRP\_Dynamic\_94 and HRP\_ShrunkCov
+marginally exceed baseline HRP (+0.008 and +0.005 Sharpe respectively),
+but the differences are small and per \S\ref{sec:results-inference}
+below not statistically significant.
+
+\paragraph{Embeddings (Phase 8 NEW).} The four embedding-based HRP
+variants --- \texttt{HRP\_PathSig} (path signatures via \texttt{esig};
+\citealp{lyons1998}), \texttt{HRP\_NodeEmbed} (node2vec on a kNN
+correlation graph; \citealp{grover2016}), \texttt{HRP\_Contrastive}
+(NT-Xent contrastive SSL on Gaussian-jittered windows; \citealp{chen2020}),
+and \texttt{HRP\_TS2Vec} (TS2Vec-lite with timestamp-mask augmentation;
+\citealp{yue2022}) --- land in the middle of the HRP family: Sharpes
+0.699--0.723, none significantly different from baseline HRP after the
+Phase 8 bug fixes (Ledoit--Wolf $p \in [0.107, 0.457]$). The deep-
+research adversarial review's prediction holds: embedding methods are
+interesting engineering but do not deliver an OOS Sharpe edge on this
+universe at this time horizon. We report the null result honestly;
+embeddings neither help nor hurt.
 
 \paragraph{Detoning and partial correlation underperform HRP.}
 Both target market-mode removal --- a theoretically attractive idea ---
@@ -477,17 +519,22 @@ MVP ([0.27, 1.58]), MaxDiv ([0.00, 1.46]), and HODL\_BTC ([0.06, 1.63])
 have 95\% block-bootstrap CIs cleanly above zero. Every HRP-family
 variant's CI straddles zero.
 
-\paragraph{Pairwise LW Sharpe differences vs.\ HRP.} \emph{None} of the
-11 candidates reach $p < 0.05$. HRP\_ShrunkCov's improvement is the
-closest at $\Delta\text{Sharpe} = +0.016$ ($p=0.275$). MVP beats HRP by
-0.217 ($p=0.20$), HODL\_BTC by 0.135 ($p=0.56$).
+\paragraph{Pairwise LW Sharpe differences vs.\ HRP (Phase 8 v2).}
+\emph{Only two} candidates reach the $p \leq 0.05$ threshold:
+HRP\_TailDepShrunk ($-0.041$ Sharpe, $p=0.050$) and ERC ($-0.079$,
+$p=0.050$), both marginally \emph{worse} than baseline HRP. No
+strategy is significantly better. The closest positive deltas are
+MVP ($+0.32$, $p=0.067$) and HODL\_BTC ($+0.22$, $p=0.60$); both
+fail to reject at conventional levels.
 
-\paragraph{Hansen SPA.} Across all 11 candidates vs.\ HRP,
-$p_{\text{consistent}} = 0.526$, $p_{\text{upper}} = 0.870$
+\paragraph{Hansen SPA (Phase 8 v2).} Across all 19 candidates vs.\
+HRP, $p_{\text{consistent}} = 0.533$, $p_{\text{upper}} = 0.797$
 (Figure~\ref{fig:spa}). \textbf{We cannot reject the null hypothesis
 that no strategy outperforms baseline HRP after correcting for the
-multiple-testing of 11 candidates}, even with 6.3 years of
-monthly-rebalanced data.
+multiple-testing of 19 candidates}, even with the bug-fixed
+6.3-year monthly-rebalanced data and the expanded 146-symbol
+universe. MVP has the highest studentised score (+1.24); HODL\_BTC
+(+0.99); all HRP variants $\leq 0$.
 
 \begin{figure}[H]
   \centering

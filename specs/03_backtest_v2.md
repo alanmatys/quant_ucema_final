@@ -420,7 +420,113 @@ are NEGATED by multi-snapshot evidence.
 
 Output: `data/cluster_stability.csv` (76 rows).
 
-**Phase 5b artifacts:**
+---
+
+## 9. Phase 8 — bug fixes + embedding variants + expanded universe
+
+### 9.1 Context
+
+External code review on 2026-05-19 surfaced four bugs in earlier
+phases. All four are now fixed (see commit `3ff4066`):
+
+1. `RiskManagedMomentum.get_weights()` was a no-op (scaling cancelled
+   by renormalisation). The bug was visible in Phase 5b output where
+   `RM_MOM` and `CS_MOM_eq21` had identical Sharpe = 0.216 — they
+   were the same strategy. Fixed: hold residual as cash per
+   Barroso & Santa-Clara.
+2. `ewma_correlation` double-counted (initialised from full-window
+   sample cov, then iterated again over the same data). Fixed: short
+   burn-in init then iterate only over the remainder.
+3. `rolling_quote_vol_30d` was MEDIAN of 30 daily volumes, not the
+   sum or mean. Fixed: mean of 30 daily quote volumes.
+4. `WalkForwardBacktest` skipped the entire OOS interval when the
+   universe had < 5 assets. Fixed: hold previous weights through
+   the skipped interval.
+
+The universe was also expanded by 150 additional delisted USDT pairs
+(commit `2517b92`) — survivorship-bias correction from the same review.
+Ever-included symbols went from 87 → 146; dropped during window
+38 → 97.
+
+Four embedding-based HRP variants were added (commit `3ff4066`):
+HRP_PathSig (path signatures), HRP_NodeEmbed (node2vec on correlation
+kNN graph), HRP_Contrastive (PyTorch contrastive SSL with Gaussian
+jitter), HRP_TS2Vec (TS2Vec-lite with timestamp masking).
+
+### 9.2 Phase 8 headline backtest (Scenario B, 19 strategies + HODL_BTC)
+
+Re-run on the corrected universe with all 4 bug fixes:
+
+| Strategy | Arith Sharpe | Total Return | Avg Turnover | LW p vs HRP |
+|---|---|---|---|---|
+| MVP | **1.057** | +2867% | 0.381 | n/s (0.067) |
+| HRP_Dynamic_94 | 0.749 | +442% | 0.474 | n/s |
+| HRP_ShrunkCov | 0.746 | +428% | 0.353 | n/s |
+| **HRP** | **0.741** | +418% | 0.360 | (baseline) |
+| HRP_VolStd | 0.735 | +402% | 0.368 | n/s |
+| MOM_HRP | 0.726 | +351% | 1.436 | n/s |
+| HRP_Contrastive | 0.723 | +371% | 0.392 | n/s |
+| HRP_NodeEmbed | 0.721 | +369% | 0.368 | n/s |
+| MaxDiv | 0.719 | +364% | 0.553 | n/s |
+| HRP_PathSig | 0.714 | +351% | 0.383 | n/s |
+| HRP_TailDep / HRP_Detoned | 0.708 | +335% | 0.365 | n/s |
+| HRP_TailDepShrunk | 0.701 | +318% | 0.352 | **p=0.050** |
+| HRP_TS2Vec | 0.699 | +318% | 0.394 | n/s |
+| HRP_PartialCorr / IVP | 0.697 | +311% | 0.182 | n/s |
+| ERC | 0.663 | +233% | 0.195 | **p=0.050** |
+| CS_MOM_eq21 | 0.663 | +217% | 1.420 | n/s |
+| RM_MOM | 0.663 | +118% | 0.366 | n/s |
+| HODL_BTC | 0.519 | n/a | — | n/s |
+
+### 9.3 Effect of the bug fixes (vs Phase 5d v1)
+
+| Strategy | v1 (buggy) | v2 (fixed) | Δ |
+|---|---|---|---|
+| HRP | 0.713 | 0.741 | +0.028 |
+| HRP_ShrunkCov | 0.695 | 0.746 | +0.051 |
+| MVP | 0.917 | 1.057 | +0.140 |
+| MaxDiv | 0.603 | 0.719 | +0.116 |
+| **RM_MOM** | **0.216 (broken)** | **0.663 (working)** | **+0.447** |
+| HRP_PathSig | 0.646 | 0.714 | +0.068 |
+| HRP_NodeEmbed | 0.659 | 0.721 | +0.062 |
+| HRP_Contrastive | 0.671 | 0.723 | +0.052 |
+| HRP_TS2Vec | (n/a) | 0.699 | new |
+
+The most consequential single change is `RM_MOM`: previously broken,
+now de-risks correctly during high-vol regimes (Sharpe 0.66, total
+return +118% with 21-25% average cash position).
+
+The mean-volume metric change + skip-OOS fix collectively elevate all
+HRP variants by ~0.03-0.05 Sharpe. Net: the **rankings within HRP
+family are mostly preserved** but the absolute numbers shift upward.
+
+### 9.4 Embeddings findings
+
+**None of the 4 embedding variants beat baseline HRP.** With the
+bug-fixed inference, NONE is significantly worse either:
+
+- HRP_Contrastive (0.723) — closest to HRP (0.741); p=0.457
+- HRP_NodeEmbed (0.721) — p=0.453
+- HRP_PathSig (0.714) — p=0.293
+- HRP_TS2Vec (0.699) — p=0.107 (closest to significance)
+
+The earlier "embeddings significantly worse than HRP" finding (Phase
+5d v1) was an artifact of the median-volume + skip-OOS bugs. After
+fixing them, the embedding variants are statistically indistinguishable
+from baseline HRP. **The honest paper-grade conclusion: embeddings
+neither help nor hurt on this universe at this time horizon.**
+
+### 9.5 Hansen SPA across all 19 candidates
+
+p_consistent = **0.533**, p_upper = 0.797. Cannot reject the null
+that no strategy outperforms baseline HRP after multiple-testing
+correction. MVP has the highest studentized score (+1.24); HODL_BTC
++0.99; all HRP variants ≤ 0 (i.e. statistically the same as or
+slightly worse than baseline HRP).
+
+---
+
+## 10. Phase 5b artifacts (historical, kept for traceability):
 - `data/backtest_v2_threshold_results.csv` — 15 rows (5 strats × 3 scenarios)
 - `data/backtest_v2_static_results.csv` — 13 rows (Scenario A static)
 - `data/cluster_stability.csv` — 76 rows per-snapshot cluster diagnostics
