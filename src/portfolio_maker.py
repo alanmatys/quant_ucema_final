@@ -861,11 +861,20 @@ class HRPDetoned(HRPDenoised):
 
 
 class HRPPartialCorr(HRP):
-    """HRP using a sparse partial-correlation matrix (Spec 06)."""
+    """HRP using a sparse partial-correlation matrix (Spec 06).
 
-    def __init__(self, returns: pd.DataFrame, alpha: float = 0.05) -> None:
+    Default `alpha = 1e-3` is calibrated for crypto returns (variance ~0.004).
+    Previous default of 0.05 was inappropriate for the scale — it shrunk
+    all off-diagonals to zero, making this variant silently degenerate to
+    IVP (bug caught in Phase 8h HP sweep, when all 16 alpha cells gave
+    identical Sharpe = 0.697 = IVP's exact value). For other-asset-classes
+    with different return variance, alpha should be retuned or use_cv=True.
+    """
+
+    def __init__(self, returns: pd.DataFrame, alpha: float = 1e-3,
+                 use_cv: bool = False) -> None:
         super().__init__(returns)
-        pcorr = estimate_partial_correlation(returns, alpha=alpha)
+        pcorr = estimate_partial_correlation(returns, alpha=alpha, use_cv=use_cv)
         self.corr = pcorr
         std = np.sqrt(np.diag(self.cov.values))
         self.cov = _rebuild_cov_from_corr(self.corr, std)

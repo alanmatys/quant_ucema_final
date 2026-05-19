@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from sklearn.covariance import GraphicalLasso
+from sklearn.covariance import GraphicalLasso, GraphicalLassoCV
 
 
 # ----------------------------------------------------------------------
@@ -41,23 +41,34 @@ def partial_correlation_from_precision(theta: np.ndarray) -> np.ndarray:
 
 def estimate_partial_correlation(
     returns: pd.DataFrame,
-    alpha: float = 0.05,
-    max_iter: int = 200,
+    alpha: float = 1e-3,
+    max_iter: int = 300,
+    use_cv: bool = False,
 ) -> pd.DataFrame:
     """Sparse partial correlation via graphical lasso.
 
     Args:
         returns: T x N returns DataFrame.
         alpha:   L1 regularization strength on the precision matrix.
+            **Critical:** sklearn's GraphicalLasso `alpha` is in the SAME
+            units as the covariance, NOT a normalized [0,1] number.
+            For crypto returns with variance ~0.004, `alpha = 0.05`
+            (the previous default) is enormous and shrinks ALL
+            off-diagonals to zero, causing HRPPartialCorr to silently
+            degenerate into IVP. The right scale is `alpha ≈ 1e-3`,
+            which produces ~40% non-zero off-diagonals on real crypto.
+            Bug caught in Phase 8h HP sweep.
         max_iter: graphical-lasso solver iterations.
+        use_cv:  if True, ignore `alpha` and use GraphicalLassoCV to
+            auto-tune via cross-validation. More robust but ~5x slower.
 
     Returns:
         N x N partial-correlation DataFrame with the same labels as `returns`.
     """
-    cov = returns.cov().values
-    # Graphical lasso expects standardized or covariance-like input; sklearn
-    # fits to the empirical covariance matrix internally when given samples.
-    gl = GraphicalLasso(alpha=alpha, max_iter=max_iter, assume_centered=False)
+    if use_cv:
+        gl = GraphicalLassoCV(max_iter=max_iter, n_jobs=1)
+    else:
+        gl = GraphicalLasso(alpha=alpha, max_iter=max_iter, assume_centered=False)
     gl.fit(returns.values)
     theta = gl.precision_
     pcorr = partial_correlation_from_precision(theta)
