@@ -526,7 +526,96 @@ slightly worse than baseline HRP).
 
 ---
 
-## 10. Phase 5b artifacts (historical, kept for traceability):
+## 10. Phase 8d — regime check: exclude the COVID bull run
+
+To check whether the §9 conclusions are dominated by the 2020-03 → 2021-11
+COVID bull market (when BTC ran from ~$5k to ~$69k), re-ran the full
+19-strategy backtest with `start = 2022-01-01` (~4.4 years OOS, 53 monthly
+rebalances). All other parameters identical to §9.
+
+### 10.1 Post-COVID headline (Conservative CEX cost, 2022-2026)
+
+| Strategy | Arith Sharpe | Total Return | MaxDD | LW p vs HRP |
+|---|---|---|---|---|
+| **MVP** | **+0.482** | **+66%** | -71% | 0.063 |
+| HRP_Dynamic_94 | +0.099 | -51% | -76% | 0.113 |
+| HRP_Contrastive | +0.071 | -57% | -78% | 0.520 |
+| HRP_NodeEmbed | +0.057 | -59% | -77% | 0.760 |
+| HRP_PathSig | +0.055 | -59% | -78% | 0.793 |
+| HRP_TS2Vec | +0.051 | -59% | -77% | 0.910 |
+| **HRP (baseline)** | **+0.047** | -60% | -77% | --- |
+| HRP_TailDep | +0.046 | -60% | -78% | 0.963 |
+| HRP_PartialCorr / IVP | +0.045 | -61% | -77% | 0.973 |
+| HRP_VolStd | +0.040 | -60% | -79% | 0.693 |
+| HRP_ShrunkCov | +0.038 | -61% | -78% | 0.633 |
+| HRP_TailDepShrunk | +0.032 | -62% | -78% | 0.633 |
+| HRP_Detoned | +0.023 | -64% | -79% | 0.690 |
+| MOM_HRP | -0.015 | -73% | -85% | 0.703 |
+| ERC | -0.026 | -71% | -81% | 0.283 |
+| RM_MOM (fixed) | -0.160 | -19% | **-33%** | 0.170 |
+| CS_MOM_eq21 | -0.161 | -83% | -87% | 0.177 |
+| MaxDiv | -0.163 | -83% | -89% | 0.233 |
+| HODL_BTC | -0.492 | n/a | --- | 0.267 |
+
+### 10.2 Regime sensitivity (paper-grade finding)
+
+**Excluding the COVID bull run completely changes the story:**
+
+| Metric | 2020-2026 (incl COVID) | 2022-2026 (post-COVID) |
+|---|---|---|
+| HRP Sharpe | 0.741 (+418% total) | **0.047** (-60% total) |
+| Best HRP-family variant | HRP_Dynamic 0.749 | HRP_Dynamic 0.099 |
+| MVP Sharpe | 1.057 (+2867%) | 0.482 (+66%) |
+| MaxDiv Sharpe | 0.719 (+364%) | **-0.163** (-83%) |
+| ERC Sharpe | 0.663 (+233%) | **-0.026** (-71%) |
+| CS_MOM Sharpe | 0.663 (+217%) | **-0.161** (-83%) |
+| Number of strategies with negative Sharpe | 0 of 19 | **5 of 19** |
+
+**Two findings worth headlining:**
+
+1. **In a "normal" (non-COVID-bull) crypto market, diversification is a
+   losing proposition on this universe.** All risk-based HRP variants
+   lost ~60% over 2022-2026 with near-zero risk-adjusted return. Only
+   MVP — which essentially concentrates 60-80% in BTC — produced
+   positive total return. The 2020-2026 "diversification works" finding
+   was largely a COVID-rally artifact.
+
+2. **Embedding variants directionally LEAD baseline HRP in post-COVID
+   data** (HRP_Contrastive +0.024 Sharpe vs HRP, HRP_PathSig +0.008,
+   HRP_NodeEmbed +0.011, HRP_TS2Vec +0.004 — all positive). The sign
+   flips from the bull-period analysis (where all 4 embeddings were
+   negative vs HRP). Not statistically significant individually (LW
+   p > 0.5 for all), but the directional reversal suggests embeddings
+   may capture risk structure more relevant in challenging regimes
+   than in monotone bull markets.
+
+3. **RM_MOM (the bug-fixed version) shows its defensive value**:
+   Sharpe -0.16 (poor) but MaxDD only -33% (vs other momentum's -87%).
+   The cash-residual de-risking saved it from the worst drawdowns.
+   This is exactly what Barroso & Santa-Clara's framework is designed
+   to do; the original buggy implementation hid this property.
+
+Hansen SPA on post-COVID data: p_consistent = 0.483, p_upper = 0.870.
+Still cannot reject "no strategy beats HRP", but the **studentised
+scores reverse**: in post-COVID, HRP_Dynamic_94 (+1.34), HRP_Contrastive
+(+0.70), MVP (+1.38), HODL_BTC (+1.10), HRP_NodeEmbed (+0.32),
+HRP_PathSig (+0.24), HRP_TS2Vec (+0.12) are all positive (above
+baseline), while in the full-window analysis nearly all HRP variants
+had negative or near-zero scores.
+
+### 10.3 Artifacts (Phase 8d, post-COVID)
+- `data/backtest_v2_post_covid_results.csv`
+- `data/inference_post_covid_bootstrap_cis.csv`
+- `data/inference_post_covid_sharpe_diff.csv`
+- `data/inference_post_covid_spa.csv`
+
+The 2020-2026 artifacts (§9.2 above) are kept as the headline; the
+post-COVID artifacts are the regime-sensitivity check. The paper
+should report BOTH side by side.
+
+---
+
+## 11. Phase 5b artifacts (historical, kept for traceability):
 - `data/backtest_v2_threshold_results.csv` — 15 rows (5 strats × 3 scenarios)
 - `data/backtest_v2_static_results.csv` — 13 rows (Scenario A static)
 - `data/cluster_stability.csv` — 76 rows per-snapshot cluster diagnostics

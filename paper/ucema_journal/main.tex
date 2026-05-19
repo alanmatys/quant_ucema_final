@@ -627,7 +627,86 @@ joint-crash co-movement structure that Pearson summarises poorly ---
 \emph{does not}. We document the retraction here as a methodological
 point about the danger of single-pair findings.
 
+\subsection{Regime sensitivity: excluding the COVID bull run}
+\label{sec:results-regime}
+
+The 2020--2026 headline window includes the COVID-era crypto rally
+(March 2020 -- November 2021) during which Bitcoin ran from
+$\sim$\$5k to $\sim$\$69k --- arguably the most extreme bull market
+in crypto history. To check whether the $\S$\ref{sec:results}
+conclusions are dominated by that single rally, we re-ran the entire
+19-strategy backtest with $\mathrm{start}=$ \texttt{2022-01-01}
+(53 monthly rebalances over $\sim$4.4 years). All other parameters
+identical.
+
+\textbf{The picture flips entirely.} On post-COVID data, baseline
+HRP achieves Sharpe $0.047$ with total return $-60\%$ --- a
+near-zero risk-adjusted return achieved by losing 60\% of capital
+in straightforward dollar terms. All 19 strategies except MVP
+(Sharpe $0.482$, $+66\%$) lose money in total terms over the
+post-COVID window. Five strategies have outright \emph{negative}
+Sharpe (vs zero in the full-window analysis): MaxDiv ($-0.163$),
+ERC ($-0.026$), CS\_MOM ($-0.161$), RM\_MOM ($-0.160$, fixed
+variant), and HODL\_BTC ($-0.492$, dragged by 2022 drawdown).
+
+\paragraph{Two paper-grade findings emerge from the regime comparison.}
+
+\textbf{(1) Diversification-based crypto portfolios were a losing
+proposition in the post-COVID regime.} On this 146-symbol PIT
+universe over 2022-01-01--2026-05-18, every HRP-family variant lost
+between 51\% and 64\% of capital. The 2020-2026 ``diversification
+works'' framing was largely a COVID-rally artifact. Honest framing:
+\emph{HRP diversifies risk but does not produce capital appreciation
+in non-bull crypto regimes}.
+
+\textbf{(2) Embedding variants directionally lead baseline HRP in
+the harder regime.} In the full window, all four embedding variants
+were marginally below HRP (deltas $-0.018$ to $-0.042$ Sharpe). In
+post-COVID, all four are \emph{above} HRP (\texttt{HRP\_Contrastive}
+$+0.024$, \texttt{HRP\_NodeEmbed} $+0.011$, \texttt{HRP\_PathSig}
+$+0.008$, \texttt{HRP\_TS2Vec} $+0.004$). None reach individual
+significance (all LW $p > 0.5$), but the directional reversal is
+suggestive: embedding methods may capture risk structure more
+relevant in challenging regimes than in monotone rallies. This
+would warrant follow-up with a longer post-COVID sample.
+
+\textbf{(3) RM\_MOM (the bug-fixed Barroso--Santa-Clara variant)
+shows its defensive role.} Post-COVID Sharpe is $-0.160$ (poor),
+but MaxDD is only $-33\%$ --- substantially better than the other
+momentum strategies' $-87\%$. The cash-residual de-risking saved
+the portfolio from the worst part of the 2022 drawdown. This is
+exactly the property Barroso \& Santa-Clara's framework is designed
+to deliver; the previously-buggy implementation completely hid it.
+
+\begin{table}[H]
+\centering\small
+\caption{Regime sensitivity: 2020-2026 (incl COVID bull) vs 2022-2026 (post-COVID).
+``Sharpe'' is annualised arithmetic; ``$\Delta$Sharpe'' is the change from full window
+to post-COVID.}
+\label{tab:regime}
+\begin{tabular}{lrrr}
+\toprule
+Strategy            & 2020-2026 Sharpe & 2022-2026 Sharpe & $\Delta$Sharpe\\
+\midrule
+HRP                 &  0.741 &  0.047 & --0.694\\
+HRP\_Dynamic\_94    &  0.749 &  0.099 & --0.650\\
+HRP\_ShrunkCov      &  0.746 &  0.038 & --0.708\\
+HRP\_Contrastive    &  0.723 &  0.071 & --0.652\\
+HRP\_NodeEmbed      &  0.721 &  0.057 & --0.664\\
+HRP\_PathSig        &  0.714 &  0.055 & --0.659\\
+HRP\_TS2Vec         &  0.699 &  0.051 & --0.648\\
+MVP                 &  1.057 &  0.482 & --0.575\\
+MaxDiv              &  0.719 & --0.163 & --0.882\\
+ERC                 &  0.663 & --0.026 & --0.689\\
+CS\_MOM\_eq21       &  0.663 & --0.161 & --0.824\\
+RM\_MOM             &  0.663 & --0.160 & --0.823\\
+HODL\_BTC           &  0.519 & --0.492 & --1.011\\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \subsection{Cost sensitivity and scenario comparison}
+</invoke>
 
 The cost grid (Figure~\ref{fig:cost_sens}) shows Sharpe shifts under
 0.005 across the four cost scenarios for all five strategies tested,
