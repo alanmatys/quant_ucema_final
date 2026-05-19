@@ -200,7 +200,21 @@ class WalkForwardBacktest:
             )
             if train_returns.shape[1] < 5:
                 if self.verbose:
-                    print(f"  {snap.date()}: only {train_returns.shape[1]} assets pass min-periods, skipping")
+                    print(f"  {snap.date()}: only {train_returns.shape[1]} assets pass min-periods, holding previous weights")
+                # Previously skipped the entire OOS interval (bug caught in
+                # 2026-05-19 code review). Correct behaviour: hold previous
+                # weights through the OOS interval, then move to the next
+                # snapshot.
+                if not prev_weights.empty:
+                    next_snap = snap_dates[i + 1] if i + 1 < len(snap_dates) else end
+                    if pd.Timestamp(next_snap) > snap:
+                        oos_window = _next_day_returns(self.prices, snap, pd.Timestamp(next_snap))
+                        if not oos_window.empty:
+                            common = prev_weights.index.intersection(oos_window.columns)
+                            if len(common) > 0:
+                                held_returns = (oos_window[common] * prev_weights[common]).sum(axis=1)
+                                daily_returns.append(held_returns)
+                                gross_daily_returns.append(held_returns)
                 continue
 
             # Fit strategy and get target weights

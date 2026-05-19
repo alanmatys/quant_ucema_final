@@ -86,9 +86,20 @@ def ewma_correlation(returns: pd.DataFrame, lam: float = 0.94) -> pd.DataFrame:
     r = returns.values - returns.values.mean(axis=0, keepdims=True)
     T, N = r.shape
 
-    # Initialize with the sample covariance over the first window
-    cov = np.cov(r, rowvar=False)
-    for t in range(T):
+    # Initialize from a SHORT burn-in (first 30 observations or first
+    # third, whichever is smaller). Previous version initialized from
+    # the SAMPLE covariance over ALL data, then iterated over ALL
+    # data again — double-counting that washed out the EWMA decay
+    # and biased toward the sample correlation (bug caught in the
+    # 2026-05-19 code review). The fix uses a small burn-in window
+    # for the initial state, then iterates only over the remaining
+    # observations.
+    burn_in = min(30, T // 3) if T > 10 else max(1, T // 4)
+    if burn_in >= 2:
+        cov = np.cov(r[:burn_in], rowvar=False)
+    else:
+        cov = np.outer(r[0], r[0])
+    for t in range(burn_in, T):
         outer = np.outer(r[t], r[t])
         cov = lam * cov + (1 - lam) * outer
 

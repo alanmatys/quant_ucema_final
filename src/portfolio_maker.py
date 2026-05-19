@@ -689,21 +689,37 @@ class RiskManagedMomentum(PortfolioStrategy):
         return scaling
 
     def get_weights(self):
-        """Compute risk-managed momentum weights with volatility scaling."""
+        """Compute risk-managed momentum weights with volatility scaling.
+
+        Per Barroso & Santa-Clara (2015): scale raw_weights by
+        sigma_target / sigma_realized, capped at [min_leverage, max_leverage].
+
+        Previously this method renormalised the scaled weights to sum=1 —
+        which CANCELLED the scaling entirely (because raw_weights already
+        sums to 1, scaling by a scalar then renormalising gives back the
+        original). The bug was caught in the Phase 5d code review of
+        2026-05-19, evidenced by RM_MOM producing Sharpe = 0.216 identical
+        to CS_MOM_eq21.
+
+        Correct behaviour: hold the residual as cash (zero return). For
+        long-only no-leverage we clip scaling at 1.0 maximum, so the
+        weights sum to scaling (≤ 1.0) and the remainder (1 - scaling) is
+        implicit cash. With scaling < 1, this de-risks during high-vol
+        regimes — exactly what the Barroso & Santa-Clara prescription does.
+        """
         raw_weights = self.calculate_raw_momentum_weights()
         scaling = self.calculate_vol_scaling_factor()
 
-        # Scale weights
-        scaled_weights = raw_weights * scaling
+        # Cap at 1.0 to enforce long-only no-leverage
+        effective_scaling = float(min(scaling, 1.0))
 
-        # Normalize to sum to 1 (long-only, no actual leverage)
-        if scaled_weights.sum() > 0:
-            weights = scaled_weights / scaled_weights.sum()
-        else:
-            weights = pd.Series(1.0 / len(self.returns.columns), index=self.returns.columns)
+        # Apply scaling — residual (1 - effective_scaling) is implicit cash
+        scaled_weights = raw_weights * effective_scaling
+        # No renormalisation. Sum can be < 1.0; backtest treats unallocated
+        # weight as a zero-return cash position.
 
-        self.weights = weights
-        return weights
+        self.weights = scaled_weights
+        return scaled_weights
 
 
 class MomentumHRP(PortfolioStrategy):
@@ -1143,3 +1159,200 @@ class NetworkRiskParity(PortfolioStrategy):
         w = inverse_score / inverse_score.sum()
         self.weights = pd.Series(w, index=self.cov.index)
         return self.weights
+
+
+# =============================================================================
+# EMBEDDING-DISTANCE HRP VARIANTS (feature/embedding-hrp-variants)
+# =============================================================================
+# These four variants replace HRP's correlation-derived distance with an
+# embedding-derived distance. All inherit base HRP's bisection logic and use
+# the sample covariance for within-cluster variance allocation; only the
+# dendrogram topology changes.
+#
+# Same fallback pattern as HRPTailDep: on any failure, log via
+# `self.fallback_used` and fall back to base HRP.
+
+def _embedding_to_hrp_weights(
+    obj: "HRP",
+    distance_matrix: pd.DataFrame,
+    cov: pd.DataFrame,
+) -> pd.Series:
+    """Shared logic for embedding-based HRP variants: linkage on distance,
+    quasi-diagonalisation, recursive bisection using sample covariance."""
+    d = distance_matrix.reindex(index=cov.index, columns=cov.index).fillna(1.0)
+    d_arr = d.values.copy()
+    d_arr = (d_arr + d_arr.T) / 2
+    np.fill_diagonal(d_arr, 0.0)
+    condensed = squareform(d_arr, checks=False)
+    link = linkage(condensed, obj.linkage_method)
+    sort_ix = HRP.get_quasi_diag(link)
+    sort_ix = cov.index[sort_ix].tolist()
+    return HRP.get_rec_bipart(cov, sort_ix)
+
+
+class HRPPathSig(HRP):
+    """HRP with path-signature embedding distance.
+
+    Per-asset path signatures (level-3 truncation by default) are computed
+    on a rolling log-price window, then converted to a cosine-distance
+    matrix that replaces HRP's correlation distance.
+
+    Reference: Chen (1957), Lyons (1998); crypto application Lyons & Akyildirim (2024).
+    """
+
+    def __init__(self, returns: pd.DataFrame, window: int = 60, level: int = 3,
+                 linkage_method: str = "single") -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.window = window
+        self.level = level
+        self.fallback_used = False
+        self.sig_df: Optional[pd.DataFrame] = None
+
+    def get_weights(self) -> pd.Series:
+        try:
+            from src.embeddings.path_signatures import (
+                asset_path_signatures, signatures_to_distance,
+            )
+            self.sig_df = asset_path_signatures(self.returns, window=self.window, level=self.level)
+            dist = signatures_to_distance(self.sig_df)
+            self.weights = _embedding_to_hrp_weights(self, dist, self.cov)
+            return self.weights
+        except Exception:
+            self.fallback_used = True
+            return super().get_weights()
+
+
+class HRPNodeEmbed(HRP):
+    """HRP with node2vec embedding distance.
+
+    Builds a kNN graph from sample correlations, runs node2vec random walks +
+    skip-gram, and uses cosine distance on the resulting embeddings.
+
+    Reference: Grover & Leskovec (2016).
+    """
+
+    def __init__(self, returns: pd.DataFrame, dimensions: int = 32, k: int = 10,
+                 walk_length: int = 20, num_walks: int = 40, p: float = 1.0,
+                 q: float = 1.0, seed: int = 42, linkage_method: str = "single") -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.dimensions = dimensions
+        self.k = k
+        self.walk_length = walk_length
+        self.num_walks = num_walks
+        self.p = p
+        self.q = q
+        self.seed = seed
+        self.fallback_used = False
+        self.emb_df: Optional[pd.DataFrame] = None
+
+    def get_weights(self) -> pd.Series:
+        try:
+            from src.embeddings.graph_emb import (
+                build_corr_knn_graph, node2vec_embeddings, embeddings_to_distance,
+            )
+            g = build_corr_knn_graph(self.corr, k=self.k, weight_mode="absolute_corr")
+            self.emb_df = node2vec_embeddings(
+                g, dimensions=self.dimensions, walk_length=self.walk_length,
+                num_walks=self.num_walks, p=self.p, q=self.q, seed=self.seed,
+            )
+            dist = embeddings_to_distance(self.emb_df)
+            self.weights = _embedding_to_hrp_weights(self, dist, self.cov)
+            return self.weights
+        except Exception:
+            self.fallback_used = True
+            return super().get_weights()
+
+
+class HRPContrastive(HRP):
+    """HRP with contrastive-SSL embedding distance.
+
+    Trains a small 1D-CNN encoder via NT-Xent contrastive loss on
+    Gaussian-jittered window pairs, then embeds each asset as the mean
+    of the encoder outputs over its windows.
+    """
+
+    def __init__(self, returns: pd.DataFrame, window: int = 40, stride: int = 5,
+                 emb_dim: int = 32, hidden: int = 16, batch_size: int = 64,
+                 epochs: int = 10, lr: float = 1e-3, seed: int = 42,
+                 linkage_method: str = "single") -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.window = window
+        self.stride = stride
+        self.emb_dim = emb_dim
+        self.hidden = hidden
+        self.batch_size = batch_size
+        self.epochs = epochs
+        self.lr = lr
+        self.seed = seed
+        self.fallback_used = False
+        self.emb_df: Optional[pd.DataFrame] = None
+
+    def get_weights(self) -> pd.Series:
+        try:
+            from src.embeddings.contrastive import (
+                train_contrastive_encoder, asset_embeddings_from_encoder,
+                embeddings_to_distance,
+            )
+            encoder, _ = train_contrastive_encoder(
+                self.returns, window=self.window, stride=self.stride,
+                emb_dim=self.emb_dim, hidden=self.hidden,
+                batch_size=self.batch_size, epochs=self.epochs,
+                lr=self.lr, seed=self.seed,
+            )
+            self.emb_df = asset_embeddings_from_encoder(
+                encoder, self.returns, window=self.window, stride=self.stride,
+            )
+            dist = embeddings_to_distance(self.emb_df)
+            self.weights = _embedding_to_hrp_weights(self, dist, self.cov)
+            return self.weights
+        except Exception:
+            self.fallback_used = True
+            return super().get_weights()
+
+
+class HRPTS2Vec(HRP):
+    """HRP with TS2Vec-lite (timestamp-mask contrastive) embedding distance.
+
+    Same encoder family as `HRPContrastive` but with random-mask
+    augmentation in the style of Yue et al. (2022) instead of Gaussian
+    jitter — closer to the official TS2Vec recipe.
+    """
+
+    def __init__(self, returns: pd.DataFrame, window: int = 40, stride: int = 5,
+                 emb_dim: int = 32, hidden: int = 16, mask_ratio: float = 0.3,
+                 batch_size: int = 64, epochs: int = 10, lr: float = 1e-3,
+                 seed: int = 42, linkage_method: str = "single") -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.window = window
+        self.stride = stride
+        self.emb_dim = emb_dim
+        self.hidden = hidden
+        self.mask_ratio = mask_ratio
+        self.batch_size = batch_size
+        self.epochs = epochs
+        self.lr = lr
+        self.seed = seed
+        self.fallback_used = False
+        self.emb_df: Optional[pd.DataFrame] = None
+
+    def get_weights(self) -> pd.Series:
+        try:
+            from src.embeddings.ts2vec_lite import (
+                train_ts2vec_lite_encoder, asset_embeddings_from_encoder,
+                embeddings_to_distance,
+            )
+            encoder = train_ts2vec_lite_encoder(
+                self.returns, window=self.window, stride=self.stride,
+                emb_dim=self.emb_dim, hidden=self.hidden,
+                mask_ratio=self.mask_ratio, batch_size=self.batch_size,
+                epochs=self.epochs, lr=self.lr, seed=self.seed,
+            )
+            self.emb_df = asset_embeddings_from_encoder(
+                encoder, self.returns, window=self.window, stride=self.stride,
+            )
+            dist = embeddings_to_distance(self.emb_df)
+            self.weights = _embedding_to_hrp_weights(self, dist, self.cov)
+            return self.weights
+        except Exception:
+            self.fallback_used = True
+            return super().get_weights()

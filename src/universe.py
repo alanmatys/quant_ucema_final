@@ -225,9 +225,16 @@ def to_monthly_snapshots(prices: pd.DataFrame) -> pd.DataFrame:
     """
     df = prices[["open_time", "symbol", "close", "quote_volume"]].copy()
     df = df.sort_values(["symbol", "open_time"])
+    # Use MEAN of 30 daily quote volumes (interpretable as "average daily
+    # tradable USDT volume over the past month"). Previously this was
+    # MEDIAN — robust to one-day spikes but doesn't match the spec's
+    # "30-day quote volume" name. Caught in the 2026-05-19 code review.
+    # Effective ranking change is small for stable tokens (median ≈ mean
+    # for low vol-of-volume) but material for tokens with one-day spikes
+    # (mean correctly rewards sustained volume; median over-weighted typical days).
     df["rolling_quote_vol_30d"] = (
         df.groupby("symbol")["quote_volume"]
-        .transform(lambda s: s.rolling(window=30, min_periods=10).median())
+        .transform(lambda s: s.rolling(window=30, min_periods=10).mean())
     )
     df["first_seen"] = df.groupby("symbol")["open_time"].transform("min")
 
