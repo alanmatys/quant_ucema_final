@@ -26,9 +26,19 @@ def build_corr_knn_graph(
 
     For each asset, keep edges to the k nearest neighbours by |correlation|.
     Edges are weighted by the chosen `weight_mode`:
-      - "absolute_corr": |ρ|
-      - "positive_corr": max(ρ, 0)
-      - "distance":      max(1 - |ρ|, 1e-3)
+      - "absolute_corr": |ρ|  — default; ignores sign, treats positively-
+        and negatively-correlated assets as equally close (appropriate
+        for capturing co-movement structure for random-walk embeddings)
+      - "positive_corr": max(ρ, 0)  — discards negative correlations
+        (used when only co-movement matters, not anti-movement)
+      - "distance":      max(1 - |ρ|, 1e-3)  — inverse: higher weight
+        for LESS-correlated pairs (preserves sign-agnostic "uncorrelated"
+        as "far")
+      - "signed_shift":  (1 + ρ) / 2 ∈ [0, 1] — preserves sign by linearly
+        mapping correlation range to [0, 1]; flagged by the 2026-05-19
+        code review as more faithful to HRP's sign-preserving Pearson
+        distance. Use when downstream analysis expects correlation sign
+        to be reflected in the graph topology.
 
     Args:
         corr: N x N correlation DataFrame (must be symmetric).
@@ -57,6 +67,8 @@ def build_corr_knn_graph(
                 w = float(max(C[i, j], 0.0))
             elif weight_mode == "distance":
                 w = float(max(1.0 - abs_c[i, j], 1e-3))
+            elif weight_mode == "signed_shift":
+                w = float((1.0 + C[i, j]) / 2.0)
             else:
                 raise ValueError(f"unknown weight_mode: {weight_mode}")
             if w > 0:

@@ -1242,7 +1242,8 @@ class HRPNodeEmbed(HRP):
 
     def __init__(self, returns: pd.DataFrame, dimensions: int = 32, k: int = 10,
                  walk_length: int = 20, num_walks: int = 40, p: float = 1.0,
-                 q: float = 1.0, seed: int = 42, linkage_method: str = "single") -> None:
+                 q: float = 1.0, seed: int = 42, linkage_method: str = "single",
+                 weight_mode: str = "absolute_corr") -> None:
         super().__init__(returns, linkage_method=linkage_method)
         self.dimensions = dimensions
         self.k = k
@@ -1251,6 +1252,7 @@ class HRPNodeEmbed(HRP):
         self.p = p
         self.q = q
         self.seed = seed
+        self.weight_mode = weight_mode
         self.fallback_used = False
         self.emb_df: Optional[pd.DataFrame] = None
 
@@ -1259,7 +1261,7 @@ class HRPNodeEmbed(HRP):
             from src.embeddings.graph_emb import (
                 build_corr_knn_graph, node2vec_embeddings, embeddings_to_distance,
             )
-            g = build_corr_knn_graph(self.corr, k=self.k, weight_mode="absolute_corr")
+            g = build_corr_knn_graph(self.corr, k=self.k, weight_mode=self.weight_mode)
             self.emb_df = node2vec_embeddings(
                 g, dimensions=self.dimensions, walk_length=self.walk_length,
                 num_walks=self.num_walks, p=self.p, q=self.q, seed=self.seed,
