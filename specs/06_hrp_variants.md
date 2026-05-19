@@ -1,5 +1,16 @@
 # Spec 06 — Additional HRP Variants
 
+**Note (2026-05-19, feature/embedding-hrp-variants branch):** four embedding-
+based HRP variants — `HRP_PathSig`, `HRP_NodeEmbed`, `HRP_Contrastive`,
+`HRP_TS2Vec` — were added in §2.7–§2.10. See those subsections and
+[Spec 03 §9](03_backtest_v2.md) for empirical results. Headline: **none
+of the four beat baseline HRP** on the expanded 241-symbol universe;
+PathSig and NodeEmbed are significantly worse (p=0.026 and 0.024 via
+Ledoit-Wolf Sharpe-difference test). The deep-research adversarial
+review's prediction holds.
+
+
+
 **Status:** Draft
 **Owner:** Alan Matys, Federico Rodriguez
 **Depends on:** [01_denoising.md](01_denoising.md) (uses denoised correlation as input)
