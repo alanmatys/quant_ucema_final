@@ -22,6 +22,7 @@ venv/
 *.bbl
 *.blg
 *.out
+*.log
 
 # OS / archive cruft
 .DS_Store
