@@ -1217,11 +1217,13 @@ class HRPPathSig(HRP):
 
     def __init__(self, returns: pd.DataFrame, window: int = 60, level: int = 3,
                  linkage_method: str = "single",
-                 extra_channels: Optional[list] = None) -> None:
+                 extra_channels: Optional[list] = None,
+                 log_transform: bool = True) -> None:
         super().__init__(returns, linkage_method=linkage_method)
         self.window = window
         self.level = level
         self.extra_channels = extra_channels
+        self.log_transform = log_transform
         self.fallback_used = False
         self.sig_df: Optional[pd.DataFrame] = None
 
@@ -1233,6 +1235,7 @@ class HRPPathSig(HRP):
             self.sig_df = asset_path_signatures(
                 self.returns, window=self.window, level=self.level,
                 extra_channels=self.extra_channels,
+                log_transform=self.log_transform,
             )
             dist = signatures_to_distance(self.sig_df)
             self.weights = _embedding_to_hrp_weights(self, dist, self.cov)
@@ -1297,7 +1300,8 @@ class HRPContrastive(HRP):
                  emb_dim: int = 32, hidden: int = 16, batch_size: int = 64,
                  epochs: int = 10, lr: float = 1e-3, seed: int = 42,
                  linkage_method: str = "single",
-                 extra_channels: Optional[list] = None) -> None:
+                 extra_channels: Optional[list] = None,
+                 log_transform: bool = True) -> None:
         super().__init__(returns, linkage_method=linkage_method)
         self.window = window
         self.stride = stride
@@ -1308,6 +1312,7 @@ class HRPContrastive(HRP):
         self.lr = lr
         self.seed = seed
         self.extra_channels = extra_channels
+        self.log_transform = log_transform
         self.fallback_used = False
         self.emb_df: Optional[pd.DataFrame] = None
 
@@ -1322,10 +1327,12 @@ class HRPContrastive(HRP):
                 emb_dim=self.emb_dim, hidden=self.hidden,
                 batch_size=self.batch_size, epochs=self.epochs,
                 lr=self.lr, seed=self.seed, extra_channels=self.extra_channels,
+                log_transform=self.log_transform,
             )
             self.emb_df = asset_embeddings_from_encoder(
                 encoder, self.returns, window=self.window, stride=self.stride,
                 extra_channels=self.extra_channels,
+                log_transform=self.log_transform,
             )
             dist = embeddings_to_distance(self.emb_df)
             self.weights = _embedding_to_hrp_weights(self, dist, self.cov)
@@ -1347,7 +1354,8 @@ class HRPTS2Vec(HRP):
                  emb_dim: int = 32, hidden: int = 16, mask_ratio: float = 0.3,
                  batch_size: int = 64, epochs: int = 10, lr: float = 1e-3,
                  seed: int = 42, linkage_method: str = "single",
-                 extra_channels: Optional[list] = None) -> None:
+                 extra_channels: Optional[list] = None,
+                 log_transform: bool = True) -> None:
         super().__init__(returns, linkage_method=linkage_method)
         self.window = window
         self.stride = stride
@@ -1359,6 +1367,7 @@ class HRPTS2Vec(HRP):
         self.lr = lr
         self.seed = seed
         self.extra_channels = extra_channels
+        self.log_transform = log_transform
         self.fallback_used = False
         self.emb_df: Optional[pd.DataFrame] = None
 
@@ -1374,10 +1383,12 @@ class HRPTS2Vec(HRP):
                 mask_ratio=self.mask_ratio, batch_size=self.batch_size,
                 epochs=self.epochs, lr=self.lr, seed=self.seed,
                 extra_channels=self.extra_channels,
+                log_transform=self.log_transform,
             )
             self.emb_df = asset_embeddings_from_encoder(
                 encoder, self.returns, window=self.window, stride=self.stride,
                 extra_channels=self.extra_channels,
+                log_transform=self.log_transform,
             )
             dist = embeddings_to_distance(self.emb_df)
             self.weights = _embedding_to_hrp_weights(self, dist, self.cov)

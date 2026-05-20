@@ -144,19 +144,23 @@ def train_contrastive_encoder(
     seed: int = 42,
     device: str = "cpu",
     extra_channels: list[pd.DataFrame] | None = None,
+    log_transform: bool = True,
 ) -> tuple[TinyConvEncoder, WindowDataset]:
     """Train the contrastive encoder on a returns DataFrame.
 
     Args:
         extra_channels: optional list of T x N panels (quote volume, trade
             count, ...) fed as additional input channels alongside returns.
+        log_transform: see `channels.build_asset_channels` — pass False for
+            pre-tamed channels from `features.derive_channel_panels`.
 
     Returns the trained encoder and the dataset (needed for inference).
     """
     torch.manual_seed(seed)
     np.random.seed(seed)
 
-    asset_channels = build_asset_channels(returns, extra_channels)
+    asset_channels = build_asset_channels(returns, extra_channels,
+                                          log_transform=log_transform)
     n_channels = next(iter(asset_channels.values())).shape[0]
     ds = WindowDataset(asset_channels, window=window, stride=stride)
     if len(ds) < 4:
@@ -187,15 +191,18 @@ def asset_embeddings_from_encoder(
     stride: int = 5,
     device: str = "cpu",
     extra_channels: list[pd.DataFrame] | None = None,
+    log_transform: bool = True,
 ) -> pd.DataFrame:
     """Compute per-asset embeddings as the mean encoder output over windows.
 
     For each asset, slice (C, window) windows (no augmentation), encode
     each, then take the mean of the embeddings as the asset representation.
-    `extra_channels` must match what `train_contrastive_encoder` was given.
+    `extra_channels` and `log_transform` must match what
+    `train_contrastive_encoder` was given.
     """
     encoder.eval()
-    asset_channels = build_asset_channels(returns, extra_channels)
+    asset_channels = build_asset_channels(returns, extra_channels,
+                                          log_transform=log_transform)
     asset_emb: dict[str, np.ndarray] = {}
     with torch.no_grad():
         for asset, arr in asset_channels.items():

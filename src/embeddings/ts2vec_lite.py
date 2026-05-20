@@ -117,13 +117,17 @@ def train_ts2vec_lite_encoder(
     seed: int = 42,
     device: str = "cpu",
     extra_channels: list[pd.DataFrame] | None = None,
+    log_transform: bool = True,
 ) -> DilatedConvEncoder:
     """Args:
         extra_channels: optional list of T x N panels (quote volume, trade
             count, ...) fed as additional input channels alongside returns.
+        log_transform: see `channels.build_asset_channels` — pass False for
+            pre-tamed channels from `features.derive_channel_panels`.
     """
     torch.manual_seed(seed); np.random.seed(seed)
-    asset_channels = build_asset_channels(returns, extra_channels)
+    asset_channels = build_asset_channels(returns, extra_channels,
+                                          log_transform=log_transform)
     n_channels = next(iter(asset_channels.values())).shape[0]
     ds = MaskedWindowDataset(asset_channels, window=window, stride=stride,
                              mask_ratio=mask_ratio)
@@ -152,13 +156,16 @@ def asset_embeddings_from_encoder(
     stride: int = 5,
     device: str = "cpu",
     extra_channels: list[pd.DataFrame] | None = None,
+    log_transform: bool = True,
 ) -> pd.DataFrame:
     """Mean-pooled per-asset embeddings (no masking at inference).
 
-    `extra_channels` must match what `train_ts2vec_lite_encoder` was given.
+    `extra_channels` and `log_transform` must match what
+    `train_ts2vec_lite_encoder` was given.
     """
     encoder.eval()
-    asset_channels = build_asset_channels(returns, extra_channels)
+    asset_channels = build_asset_channels(returns, extra_channels,
+                                          log_transform=log_transform)
     out: dict[str, np.ndarray] = {}
     with torch.no_grad():
         for asset, arr in asset_channels.items():

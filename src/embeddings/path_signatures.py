@@ -59,6 +59,7 @@ def asset_path_signatures(
     window: int = 60,
     level: int = 3,
     extra_channels: list[pd.DataFrame] | None = None,
+    log_transform: bool = True,
 ) -> pd.DataFrame:
     """Compute per-asset path signatures over a rolling window of returns.
 
@@ -74,13 +75,14 @@ def asset_path_signatures(
             grows as (d^(L+1)-1)/(d-1) for a d-channel path, so multi-channel
             paths produce much longer signatures).
         extra_channels: optional list of T x N panels (e.g. quote volume,
-            trade count) appended as additional path channels. Each is
-            log1p-transformed before stacking — these channels are non-
-            negative and heavy-tailed, so z-scoring them raw (inside
-            `_normalise_path`) would be dominated by spikes. log1p compresses
-            the dynamic range first. Channels are aligned to `returns` by
-            label; assets/dates missing from a channel are filled with 0
-            (post-log1p), i.e. treated as a flat channel for that asset.
+            trade count) appended as additional path channels. Aligned to
+            `returns` by label; missing values are filled with the channel
+            mean (neutral after the per-column z-score in `_normalise_path`).
+        log_transform: if True (default), extra channels are log1p-transformed
+            before stacking — correct for raw non-negative heavy-tailed
+            quantities, whose raw z-scoring would be spike-dominated. Pass
+            False when the channels are already pre-transformed into tame
+            form (see `features.derive_channel_panels`).
 
     Returns:
         DataFrame indexed by asset name, columns = signature components.
@@ -93,11 +95,16 @@ def asset_path_signatures(
     clipped = tail.clip(lower=-0.99)
     log_prices = np.log1p(clipped).cumsum()
 
-    # Pre-slice + log1p-transform each extra channel to the same window.
+    # Pre-slice each extra channel to the same window.
     chan_tails: list[pd.DataFrame] = []
     for ch in extra_channels or []:
         ch_aligned = ch.reindex(index=tail.index, columns=returns.columns)
-        chan_tails.append(np.log1p(ch_aligned.clip(lower=0.0).fillna(0.0)))
+        if log_transform:  # raw extra channels: tame the heavy tail
+            ch_aligned = np.log1p(ch_aligned.clip(lower=0.0))
+        # missing → channel mean (neutral after _normalise_path's z-score),
+        # not 0 which would be a spurious outlier for an off-centre channel
+        ch_aligned = ch_aligned.fillna(ch_aligned.mean())
+        chan_tails.append(ch_aligned)
 
     rows = {}
     for asset in returns.columns:
