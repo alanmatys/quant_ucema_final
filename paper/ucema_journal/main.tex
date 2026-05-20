@@ -545,6 +545,68 @@ universe. MVP has the highest studentised score (+1.24); HODL\_BTC
   \label{fig:spa}
 \end{figure}
 
+\subsection{Hyperparameter sweeps and the combined SPA}
+\label{sec:results-sweeps}
+
+A natural objection to the headline null result is that it reflects
+\emph{untuned} strategies: perhaps some correlation type, distance
+function, linkage method, or strategy-specific parameter would lift a
+variant decisively above baseline HRP. Phase~8 addresses this with an
+exhaustive grid search --- 547 distinct configurations across 14 sweeps,
+every one re-running the full 6.3-year walk-forward backtest on the
+identical 146-symbol point-in-time universe and 2{,}299-day return
+series, against the identical baseline HRP ($\text{Sharpe}=0.741$,
+recomputed and verified bit-identical in every sweep). The sweeps span:
+correlation estimator (Pearson / Spearman / Kendall); distance function
+(\citealp{lopezdeprado2016hrp} / absolute / angular / squared); linkage
+(single / average / complete / Ward); and the strategy-specific
+parameters of every variant --- $q$ for tail dependence, $\alpha$ for
+the graphical lasso, $\lambda$ for EWMA, the volatility-standardisation
+window, the number of detoned market components, and the embedding
+hyperparameters.
+
+\paragraph{The HRP family is robust to its hyperparameters.} No sweep
+produced a configuration that escaped the $\pm 0.05$ Sharpe band of
+Section~\ref{sec:results}. The one consistent --- though small ---
+effect is linkage: \emph{average} linkage beats the
+\citet{lopezdeprado2016hrp} single-linkage default by $+0.01$ to
+$+0.02$ Sharpe across essentially every (correlation, distance)
+combination, and under single linkage all four distance functions are
+mathematically identical (single linkage depends only on the rank order
+of distances, which every monotone transform preserves). The best cell
+in the entire grid is HRP\_ShrunkCov under average linkage at Sharpe
+$0.765$ ($\Delta=+0.024$).
+
+\paragraph{Multi-channel embeddings.} The single-channel embeddings
+encode only the return series and are therefore information-equivalent
+to the sample correlation they are meant to improve on --- a nonlinear
+re-encoding of the same information cannot out-cluster it, and indeed
+the single-channel \texttt{HRP\_PathSig} grid (108 cells) beats baseline
+in zero cells. We extended all three sequence-based embeddings
+(\texttt{PathSig}, \texttt{Contrastive}, \texttt{TS2Vec}) to ingest up
+to six channels orthogonal to close-to-close returns --- quote volume,
+trade count, average trade size, intraday range, taker buy-ratio
+(order-flow imbalance) and Amihud illiquidity --- all derived from the
+same Binance OHLCV table. Extra channels lift the encoders' \emph{mean}
+Sharpe monotonically (\texttt{HRP\_Contrastive}
+$0.714\rightarrow0.725$ from one to three channels), confirming the
+channels do carry usable structure; but no multi-channel configuration
+clears baseline HRP, and adding the fourth through sixth channels
+plateaus or mildly regresses performance --- a bias--variance ceiling
+against only $\sim$76 rebalance dates.
+
+\paragraph{Combined Hansen SPA.} Pooling all 547 configurations into a
+single Hansen SPA against baseline HRP --- the honest correction for
+having searched the entire grid --- yields
+$p_{\text{consistent}}=0.583$ (all three recentering schemes fall in
+$[0.58,0.81]$). Although 38 of 547 cells show a nominally positive
+Sharpe difference, the best of them (HRP\_ShrunkCov, $\Delta=+0.024$)
+carries a pairwise Ledoit--Wolf $p$ of $0.167$. \textbf{After correcting
+for the multiple testing of 547 hyperparameter configurations, no
+strategy significantly outperforms baseline HRP.} The headline null
+result of Section~\ref{sec:results-inference} is not an artefact of
+leaving strategies untuned.
+
 \subsection{Convergence findings (the structural results)}
 \label{sec:results-convergence}
 
