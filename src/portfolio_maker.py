@@ -1296,7 +1296,8 @@ class HRPContrastive(HRP):
     def __init__(self, returns: pd.DataFrame, window: int = 40, stride: int = 5,
                  emb_dim: int = 32, hidden: int = 16, batch_size: int = 64,
                  epochs: int = 10, lr: float = 1e-3, seed: int = 42,
-                 linkage_method: str = "single") -> None:
+                 linkage_method: str = "single",
+                 extra_channels: Optional[list] = None) -> None:
         super().__init__(returns, linkage_method=linkage_method)
         self.window = window
         self.stride = stride
@@ -1306,6 +1307,7 @@ class HRPContrastive(HRP):
         self.epochs = epochs
         self.lr = lr
         self.seed = seed
+        self.extra_channels = extra_channels
         self.fallback_used = False
         self.emb_df: Optional[pd.DataFrame] = None
 
@@ -1319,10 +1321,11 @@ class HRPContrastive(HRP):
                 self.returns, window=self.window, stride=self.stride,
                 emb_dim=self.emb_dim, hidden=self.hidden,
                 batch_size=self.batch_size, epochs=self.epochs,
-                lr=self.lr, seed=self.seed,
+                lr=self.lr, seed=self.seed, extra_channels=self.extra_channels,
             )
             self.emb_df = asset_embeddings_from_encoder(
                 encoder, self.returns, window=self.window, stride=self.stride,
+                extra_channels=self.extra_channels,
             )
             dist = embeddings_to_distance(self.emb_df)
             self.weights = _embedding_to_hrp_weights(self, dist, self.cov)
@@ -1343,7 +1346,8 @@ class HRPTS2Vec(HRP):
     def __init__(self, returns: pd.DataFrame, window: int = 40, stride: int = 5,
                  emb_dim: int = 32, hidden: int = 16, mask_ratio: float = 0.3,
                  batch_size: int = 64, epochs: int = 10, lr: float = 1e-3,
-                 seed: int = 42, linkage_method: str = "single") -> None:
+                 seed: int = 42, linkage_method: str = "single",
+                 extra_channels: Optional[list] = None) -> None:
         super().__init__(returns, linkage_method=linkage_method)
         self.window = window
         self.stride = stride
@@ -1354,6 +1358,7 @@ class HRPTS2Vec(HRP):
         self.epochs = epochs
         self.lr = lr
         self.seed = seed
+        self.extra_channels = extra_channels
         self.fallback_used = False
         self.emb_df: Optional[pd.DataFrame] = None
 
@@ -1368,9 +1373,11 @@ class HRPTS2Vec(HRP):
                 emb_dim=self.emb_dim, hidden=self.hidden,
                 mask_ratio=self.mask_ratio, batch_size=self.batch_size,
                 epochs=self.epochs, lr=self.lr, seed=self.seed,
+                extra_channels=self.extra_channels,
             )
             self.emb_df = asset_embeddings_from_encoder(
                 encoder, self.returns, window=self.window, stride=self.stride,
+                extra_channels=self.extra_channels,
             )
             dist = embeddings_to_distance(self.emb_df)
             self.weights = _embedding_to_hrp_weights(self, dist, self.cov)

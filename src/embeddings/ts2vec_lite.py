@@ -21,18 +21,23 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
+from src.embeddings.channels import build_asset_channels
+
 # Single-threaded PyTorch (see contrastive.py for rationale).
 torch.set_num_threads(1)
 
 
 class DilatedConvEncoder(nn.Module):
-    """Dilated 1D-CNN encoder (TS2Vec-style)."""
+    """Dilated 1D-CNN encoder (TS2Vec-style).
 
-    def __init__(self, emb_dim: int = 32, hidden: int = 16):
+    `in_channels` > 1 feeds multi-channel windows (returns + volume + ...).
+    """
+
+    def __init__(self, emb_dim: int = 32, hidden: int = 16, in_channels: int = 1):
         super().__init__()
         # Three dilated conv layers progressively widening the receptive field
         self.net = nn.Sequential(
-            nn.Conv1d(1, hidden, kernel_size=3, padding=1, dilation=1),
+            nn.Conv1d(in_channels, hidden, kernel_size=3, padding=1, dilation=1),
             nn.ReLU(),
             nn.Conv1d(hidden, hidden * 2, kernel_size=3, padding=2, dilation=2),
             nn.ReLU(),
@@ -51,33 +56,39 @@ class MaskedWindowDataset(Dataset):
 
     TS2Vec's signature augmentation: randomly zero out a fraction of
     timestamps with two independent masks per window, generating two
-    "views" that the encoder must map to similar representations.
+    "views" that the encoder must map to similar representations. The
+    timestamp mask is shared across channels of a multi-channel window.
     """
 
-    def __init__(self, returns: pd.DataFrame, window: int, stride: int = 5,
-                 mask_ratio: float = 0.3):
+    def __init__(self, asset_channels: dict[str, np.ndarray], window: int,
+                 stride: int = 5, mask_ratio: float = 0.3):
+        """Args:
+            asset_channels: {asset: (C, T) standardised array} from
+                `channels.build_asset_channels`.
+        """
         self.window = window
         self.mask_ratio = mask_ratio
         self.windows: list[tuple[str, np.ndarray]] = []
-        for asset in returns.columns:
-            r = returns[asset].values.astype(np.float32)
-            for start in range(0, len(r) - window + 1, stride):
-                self.windows.append((asset, r[start:start + window]))
+        for asset, arr in asset_channels.items():
+            T = arr.shape[1]
+            for start in range(0, T - window + 1, stride):
+                self.windows.append((asset, arr[:, start:start + window]))
 
     def __len__(self):
         return len(self.windows)
 
     def _mask(self, x: np.ndarray) -> np.ndarray:
-        mask = np.random.rand(len(x)) > self.mask_ratio
-        return x * mask.astype(np.float32)
+        # x is (C, W); mask whole timestamps (shared across channels)
+        mask = (np.random.rand(x.shape[1]) > self.mask_ratio).astype(np.float32)
+        return x * mask
 
     def __getitem__(self, idx: int):
         _, x = self.windows[idx]
         v1 = self._mask(x)
         v2 = self._mask(x)
         return (
-            torch.from_numpy(v1).unsqueeze(0),
-            torch.from_numpy(v2).unsqueeze(0),
+            torch.from_numpy(v1),  # (C, W)
+            torch.from_numpy(v2),
         )
 
 
@@ -105,14 +116,23 @@ def train_ts2vec_lite_encoder(
     lr: float = 1e-3,
     seed: int = 42,
     device: str = "cpu",
+    extra_channels: list[pd.DataFrame] | None = None,
 ) -> DilatedConvEncoder:
+    """Args:
+        extra_channels: optional list of T x N panels (quote volume, trade
+            count, ...) fed as additional input channels alongside returns.
+    """
     torch.manual_seed(seed); np.random.seed(seed)
-    ds = MaskedWindowDataset(returns, window=window, stride=stride, mask_ratio=mask_ratio)
+    asset_channels = build_asset_channels(returns, extra_channels)
+    n_channels = next(iter(asset_channels.values())).shape[0]
+    ds = MaskedWindowDataset(asset_channels, window=window, stride=stride,
+                             mask_ratio=mask_ratio)
     if len(ds) < 4:
         raise RuntimeError(f"too few windows ({len(ds)}); reduce window or stride")
     dl = DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=0)
 
-    enc = DilatedConvEncoder(emb_dim=emb_dim, hidden=hidden).to(device)
+    enc = DilatedConvEncoder(emb_dim=emb_dim, hidden=hidden,
+                             in_channels=n_channels).to(device)
     opt = torch.optim.Adam(enc.parameters(), lr=lr)
     enc.train()
     for _ in range(epochs):
@@ -131,18 +151,24 @@ def asset_embeddings_from_encoder(
     window: int,
     stride: int = 5,
     device: str = "cpu",
+    extra_channels: list[pd.DataFrame] | None = None,
 ) -> pd.DataFrame:
-    """Mean-pooled per-asset embeddings (no masking at inference)."""
+    """Mean-pooled per-asset embeddings (no masking at inference).
+
+    `extra_channels` must match what `train_ts2vec_lite_encoder` was given.
+    """
     encoder.eval()
+    asset_channels = build_asset_channels(returns, extra_channels)
     out: dict[str, np.ndarray] = {}
     with torch.no_grad():
-        for asset in returns.columns:
-            r = returns[asset].values.astype(np.float32)
-            if len(r) < window:
+        for asset, arr in asset_channels.items():
+            T = arr.shape[1]
+            if T < window:
                 continue
-            slices = [r[s:s + window] for s in range(0, len(r) - window + 1, stride)]
-            X = np.stack(slices)
-            tens = torch.from_numpy(X).unsqueeze(1).to(device)
+            slices = [arr[:, s:s + window]
+                      for s in range(0, T - window + 1, stride)]
+            X = np.stack(slices)                   # (M, C, W)
+            tens = torch.from_numpy(X).to(device)
             emb = encoder(tens).cpu().numpy()
             out[asset] = emb.mean(axis=0)
     if not out:

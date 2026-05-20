@@ -26,6 +26,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
+from src.embeddings.channels import build_asset_channels
+
 # Force single-threaded PyTorch ops — avoids segfaults observed under
 # pytest on macOS where PyTorch's threadpool interacts badly with the
 # test-runner's signal handlers.
@@ -39,13 +41,14 @@ torch.set_num_threads(1)
 class TinyConvEncoder(nn.Module):
     """1D CNN with 3 conv layers + global average pooling.
 
-    Input shape: (B, 1, window_len). Output shape: (B, emb_dim).
+    Input shape: (B, in_channels, window_len). Output shape: (B, emb_dim).
+    `in_channels` > 1 feeds multi-channel windows (returns + volume + ...).
     """
 
-    def __init__(self, emb_dim: int = 32, hidden: int = 16):
+    def __init__(self, emb_dim: int = 32, hidden: int = 16, in_channels: int = 1):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv1d(1, hidden, kernel_size=5, padding=2),
+            nn.Conv1d(in_channels, hidden, kernel_size=5, padding=2),
             nn.ReLU(),
             nn.Conv1d(hidden, hidden * 2, kernel_size=5, padding=2),
             nn.ReLU(),
@@ -66,25 +69,30 @@ class TinyConvEncoder(nn.Module):
 class WindowDataset(Dataset):
     """Per-window samples with on-the-fly augmentation.
 
-    Each item yields (anchor, positive) — two augmented views of the
-    same window. Augmentation = Gaussian noise + random scaling.
+    Each item yields (anchor, positive) — two augmented views of the same
+    (C, window) multi-channel window. Augmentation = Gaussian noise +
+    random scaling, applied independently per channel and timestep.
     """
 
-    def __init__(self, returns: pd.DataFrame, window: int, stride: int = 5,
-                 noise_std: float = 0.02):
+    def __init__(self, asset_channels: dict[str, np.ndarray], window: int,
+                 stride: int = 5, noise_std: float = 0.02):
+        """Args:
+            asset_channels: {asset: (C, T) standardised array} from
+                `channels.build_asset_channels`.
+        """
         self.window = window
         self.noise_std = noise_std
         self.windows: list[tuple[str, np.ndarray]] = []
-        for asset in returns.columns:
-            r = returns[asset].values.astype(np.float32)
-            for start in range(0, len(r) - window + 1, stride):
-                self.windows.append((asset, r[start:start + window]))
+        for asset, arr in asset_channels.items():
+            T = arr.shape[1]
+            for start in range(0, T - window + 1, stride):
+                self.windows.append((asset, arr[:, start:start + window]))
 
     def __len__(self):
         return len(self.windows)
 
     def _augment(self, x: np.ndarray) -> np.ndarray:
-        x2 = x + np.random.randn(len(x)).astype(np.float32) * self.noise_std
+        x2 = x + np.random.randn(*x.shape).astype(np.float32) * self.noise_std
         scale = 1.0 + np.random.randn() * 0.05
         return x2 * scale
 
@@ -93,8 +101,8 @@ class WindowDataset(Dataset):
         a = self._augment(x)
         p = self._augment(x)
         return (
-            torch.from_numpy(a).unsqueeze(0),  # (1, W)
-            torch.from_numpy(p).unsqueeze(0),
+            torch.from_numpy(a),  # (C, W)
+            torch.from_numpy(p),
         )
 
     @property
@@ -135,22 +143,30 @@ def train_contrastive_encoder(
     lr: float = 1e-3,
     seed: int = 42,
     device: str = "cpu",
+    extra_channels: list[pd.DataFrame] | None = None,
 ) -> tuple[TinyConvEncoder, WindowDataset]:
     """Train the contrastive encoder on a returns DataFrame.
+
+    Args:
+        extra_channels: optional list of T x N panels (quote volume, trade
+            count, ...) fed as additional input channels alongside returns.
 
     Returns the trained encoder and the dataset (needed for inference).
     """
     torch.manual_seed(seed)
     np.random.seed(seed)
 
-    ds = WindowDataset(returns, window=window, stride=stride)
+    asset_channels = build_asset_channels(returns, extra_channels)
+    n_channels = next(iter(asset_channels.values())).shape[0]
+    ds = WindowDataset(asset_channels, window=window, stride=stride)
     if len(ds) < 4:
         raise RuntimeError(
             f"too few windows ({len(ds)}); reduce window or stride"
         )
     dl = DataLoader(ds, batch_size=batch_size, shuffle=True, num_workers=0)
 
-    encoder = TinyConvEncoder(emb_dim=emb_dim, hidden=hidden).to(device)
+    encoder = TinyConvEncoder(emb_dim=emb_dim, hidden=hidden,
+                              in_channels=n_channels).to(device)
     opt = torch.optim.Adam(encoder.parameters(), lr=lr)
     encoder.train()
     for _ in range(epochs):
@@ -170,25 +186,27 @@ def asset_embeddings_from_encoder(
     window: int,
     stride: int = 5,
     device: str = "cpu",
+    extra_channels: list[pd.DataFrame] | None = None,
 ) -> pd.DataFrame:
     """Compute per-asset embeddings as the mean encoder output over windows.
 
-    For each asset, slice windows (no augmentation), encode each, then
-    take the mean of the embeddings as the asset representation.
+    For each asset, slice (C, window) windows (no augmentation), encode
+    each, then take the mean of the embeddings as the asset representation.
+    `extra_channels` must match what `train_contrastive_encoder` was given.
     """
     encoder.eval()
+    asset_channels = build_asset_channels(returns, extra_channels)
     asset_emb: dict[str, np.ndarray] = {}
     with torch.no_grad():
-        for asset in returns.columns:
-            r = returns[asset].values.astype(np.float32)
-            if len(r) < window:
+        for asset, arr in asset_channels.items():
+            T = arr.shape[1]
+            if T < window:
                 continue
-            slices = []
-            for start in range(0, len(r) - window + 1, stride):
-                slices.append(r[start:start + window])
-            X = np.stack(slices)
-            tens = torch.from_numpy(X).unsqueeze(1).to(device)  # (M, 1, W)
-            emb = encoder(tens).cpu().numpy()                   # (M, D)
+            slices = [arr[:, s:s + window]
+                      for s in range(0, T - window + 1, stride)]
+            X = np.stack(slices)                       # (M, C, W)
+            tens = torch.from_numpy(X).to(device)
+            emb = encoder(tens).cpu().numpy()          # (M, D)
             asset_emb[asset] = emb.mean(axis=0)
     if not asset_emb:
         raise RuntimeError("no assets had enough history for embeddings")
