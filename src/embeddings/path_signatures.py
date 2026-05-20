@@ -6,9 +6,19 @@ integrals that uniquely characterises the path up to tree-like equivalences
 geometric embedding of the path's shape and order — capturing information
 the bare return distribution loses.
 
-For HRP, we treat each asset's rolling (price, volume, time) trajectory as
-a path, compute the level-3 truncated signature, normalise, and use cosine
-distance between assets' signatures as the dendrogram distance.
+For HRP, we treat each asset's rolling (time, log-price, [extra channels])
+trajectory as a path, compute the level-L truncated signature, normalise,
+and use cosine distance between assets' signatures as the dendrogram
+distance.
+
+Multi-channel paths (Phase 8k): the bare log-price path is information-
+equivalent to the return series, so a signature distance built from it
+alone cannot out-cluster the sample correlation it is derived from — the
+single-channel sweeps confirmed this (0/108 cells beat HRP). Appending
+orthogonal channels the return series does NOT contain — quote volume,
+trade count — lets the signature capture genuine cross-channel structure
+(e.g. price/volume lead-lag via the level-2 mixed term) that correlation
+cannot see.
 
 Reference: Lyons (1998), Chen (1957). Applied to crypto by Lyons & Akyildirim
 (2024) for clustering.
@@ -48,22 +58,29 @@ def asset_path_signatures(
     returns: pd.DataFrame,
     window: int = 60,
     level: int = 3,
-    use_volume: bool = False,
-    volume: pd.DataFrame | None = None,
+    extra_channels: list[pd.DataFrame] | None = None,
 ) -> pd.DataFrame:
     """Compute per-asset path signatures over a rolling window of returns.
 
     For each asset, we form a path by accumulating its returns into a
-    log-price series, take the last `window` observations, normalise, and
-    compute the level-`level` signature via `esig.stream2sig`.
+    log-price series, take the last `window` observations, optionally
+    append extra channels, normalise, and compute the level-`level`
+    signature via `esig.stream2sig`.
 
     Args:
         returns: T x N returns DataFrame.
         window: rolling-window length (default 60 days).
         level: signature truncation level (default 3; signature dimension
-            grows roughly as 2^level for univariate paths, faster for multi).
-        use_volume: if True, include a volume channel (requires `volume`).
-        volume: optional T x N volume DataFrame aligned with `returns`.
+            grows as (d^(L+1)-1)/(d-1) for a d-channel path, so multi-channel
+            paths produce much longer signatures).
+        extra_channels: optional list of T x N panels (e.g. quote volume,
+            trade count) appended as additional path channels. Each is
+            log1p-transformed before stacking — these channels are non-
+            negative and heavy-tailed, so z-scoring them raw (inside
+            `_normalise_path`) would be dominated by spikes. log1p compresses
+            the dynamic range first. Channels are aligned to `returns` by
+            label; assets/dates missing from a channel are filled with 0
+            (post-log1p), i.e. treated as a flat channel for that asset.
 
     Returns:
         DataFrame indexed by asset name, columns = signature components.
@@ -76,12 +93,17 @@ def asset_path_signatures(
     clipped = tail.clip(lower=-0.99)
     log_prices = np.log1p(clipped).cumsum()
 
+    # Pre-slice + log1p-transform each extra channel to the same window.
+    chan_tails: list[pd.DataFrame] = []
+    for ch in extra_channels or []:
+        ch_aligned = ch.reindex(index=tail.index, columns=returns.columns)
+        chan_tails.append(np.log1p(ch_aligned.clip(lower=0.0).fillna(0.0)))
+
     rows = {}
     for asset in returns.columns:
         path = log_prices[[asset]].values
-        if use_volume and volume is not None and asset in volume.columns:
-            v = volume[asset].iloc[-window:].values.reshape(-1, 1)
-            path = np.hstack([path, v])
+        for ch in chan_tails:
+            path = np.hstack([path, ch[[asset]].values])
         norm_path = _normalise_path(path)
         try:
             sig = stream2sig(norm_path, level)

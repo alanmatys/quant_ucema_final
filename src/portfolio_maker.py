@@ -1206,14 +1206,22 @@ class HRPPathSig(HRP):
     on a rolling log-price window, then converted to a cosine-distance
     matrix that replaces HRP's correlation distance.
 
+    Optionally `extra_channels` (e.g. quote volume, trade count) are
+    appended to each asset's path — orthogonal information the return
+    series does not contain, letting the signature capture cross-channel
+    structure (price/volume lead-lag) that correlation cannot. See
+    `src/embeddings/path_signatures.py`.
+
     Reference: Chen (1957), Lyons (1998); crypto application Lyons & Akyildirim (2024).
     """
 
     def __init__(self, returns: pd.DataFrame, window: int = 60, level: int = 3,
-                 linkage_method: str = "single") -> None:
+                 linkage_method: str = "single",
+                 extra_channels: Optional[list] = None) -> None:
         super().__init__(returns, linkage_method=linkage_method)
         self.window = window
         self.level = level
+        self.extra_channels = extra_channels
         self.fallback_used = False
         self.sig_df: Optional[pd.DataFrame] = None
 
@@ -1222,7 +1230,10 @@ class HRPPathSig(HRP):
             from src.embeddings.path_signatures import (
                 asset_path_signatures, signatures_to_distance,
             )
-            self.sig_df = asset_path_signatures(self.returns, window=self.window, level=self.level)
+            self.sig_df = asset_path_signatures(
+                self.returns, window=self.window, level=self.level,
+                extra_channels=self.extra_channels,
+            )
             dist = signatures_to_distance(self.sig_df)
             self.weights = _embedding_to_hrp_weights(self, dist, self.cov)
             return self.weights
