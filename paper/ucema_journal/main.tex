@@ -484,7 +484,9 @@ Phase 8 bug fixes (Ledoit--Wolf $p \in [0.107, 0.457]$). The deep-
 research adversarial review's prediction holds: embedding methods are
 interesting engineering but do not deliver an OOS Sharpe edge on this
 universe at this time horizon. We report the null result honestly;
-embeddings neither help nor hurt.
+embeddings neither help nor hurt. Section~\ref{sec:results-sweeps}
+stress-tests this conclusion with an exhaustive hyperparameter search
+and multi-channel embedding extensions; it survives intact.
 
 \paragraph{Detoning and partial correlation underperform HRP.}
 Both target market-mode removal --- a theoretically attractive idea ---
@@ -565,6 +567,41 @@ the graphical lasso, $\lambda$ for EWMA, the volatility-standardisation
 window, the number of detoned market components, and the embedding
 hyperparameters.
 
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Best cell from each Phase~8 hyperparameter sweep. $\Delta$ is
+  the Sharpe difference vs.\ baseline HRP (single linkage, $0.741$);
+  total return is the cell's net cumulative return, 2020-02 to 2026-05.
+  551 cells in total; the 4 exactly equal to the benchmark are dropped
+  for the combined SPA, leaving 547 candidates.}
+  \label{tab:sweeps}
+  \begin{tabular}{lrlrrr}
+    \toprule
+    Sweep & Cells & Best configuration & Sharpe & $\Delta$ & Tot.\ ret. \\
+    \midrule
+    Tail dependence ($q$, dist, linkage)           & 80  & $q{=}0.025$, average        & 0.744 & $+0.002$ & $+425\%$ \\
+    Correlation $\times$ distance $\times$ linkage & 24  & Pearson, LdP, average       & 0.756 & $+0.015$ & $+459\%$ \\
+    All variants under average linkage             & 12  & HRP\_ShrunkCov              & 0.765 & $+0.024$ & $+484\%$ \\
+    EWMA dynamic correlation ($\lambda$)           & 21  & $\lambda{=}0.94$, single    & 0.749 & $+0.008$ & $+442\%$ \\
+    Partial correlation ($\alpha$, dist, link)     & 60  & $\alpha{=}5{\times}10^{-4}$ & 0.739 & $-0.003$ & $+412\%$ \\
+    Vol-standardised returns (window)              & 60  & window 15, single           & 0.757 & $+0.015$ & $+462\%$ \\
+    Detoning (\# market components)                & 36  & 1 component, average        & 0.709 & $-0.032$ & $+337\%$ \\
+    Node2vec embedding                             & 54  & $d{=}16$, $k{=}10$          & 0.752 & $+0.010$ & $+444\%$ \\
+    Path signatures, single-channel                & 108 & level 2, window 60          & 0.734 & $-0.007$ & $+401\%$ \\
+    Path signatures, multi-channel$^{\dagger}$     & 72  & ret+vol+trades, L2          & 0.747 & $+0.005$ & $+432\%$ \\
+    Contrastive / TS2Vec, multi-channel            & 24  & ret+vol+trades              & 0.739 & $-0.002$ & $+412\%$ \\
+    \midrule
+    \textit{Baseline HRP} (single linkage)         & ---  & ---                        & 0.741 & ---      & $+418\%$ \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{2pt}
+  {\footnotesize $^{\dagger}$ Best cell under the initial missing-data
+  convention (zero-fill); under the corrected mean-fill convention the
+  best multi-channel \texttt{PathSig} cell is $0.735$ ($\Delta=-0.006$).}
+\end{table}
+
 \paragraph{The HRP family is robust to its hyperparameters.} No sweep
 produced a configuration that escaped the $\pm 0.05$ Sharpe band of
 Section~\ref{sec:results}. The one consistent --- though small ---
@@ -590,10 +627,15 @@ trade count, average trade size, intraday range, taker buy-ratio
 same Binance OHLCV table. Extra channels lift the encoders' \emph{mean}
 Sharpe monotonically (\texttt{HRP\_Contrastive}
 $0.714\rightarrow0.725$ from one to three channels), confirming the
-channels do carry usable structure; but no multi-channel configuration
-clears baseline HRP, and adding the fourth through sixth channels
-plateaus or mildly regresses performance --- a bias--variance ceiling
-against only $\sim$76 rebalance dates.
+channels do carry usable structure. Two cells of the initial
+multi-channel \texttt{PathSig} sweep nominally cleared baseline (best
+$+0.747$), but that margin did not survive a correction to how missing
+channel values are imputed (mean- rather than zero-fill, which avoids
+placing a spurious outlier into a log-scaled channel); under the
+corrected convention no multi-channel configuration clears baseline, and
+adding the fourth through sixth channels plateaus or mildly regresses
+performance --- a bias--variance ceiling against only $\sim$76 rebalance
+dates.
 
 \paragraph{Combined Hansen SPA.} Pooling all 547 configurations into a
 single Hansen SPA against baseline HRP --- the honest correction for
