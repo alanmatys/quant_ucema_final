@@ -23,6 +23,7 @@ from src.backtest import WalkForwardBacktest, COST_SCENARIOS
 from src.portfolio_maker import (
     HRP, HRPDetoned, HRPPartialCorr, HRPTailDep, HRPTailDepShrunk,
     HRPShrunkCov, HRPVolStd, IVP, MVP, ERC, MaxDiv, NetworkRiskParity,
+    HERC, NCO,
 )
 from src.denoising import denoise_corr_constant_residual, detone_corr
 
@@ -47,9 +48,9 @@ print("Running backtests for equity curves...")
 factories = {
     "HRP":                lambda r: HRP(r),
     "HRP_Detoned":        lambda r: HRPDetoned(r),
-    "HRP_TailDep":        lambda r: HRPTailDep(r, q=0.05),
-    "HRP_TailDepShrunk":  lambda r: HRPTailDepShrunk(r, q=0.05),
     "HRP_ShrunkCov":      lambda r: HRPShrunkCov(r),
+    "NCO":                lambda r: NCO(r),
+    "HERC":               lambda r: HERC(r),
     "MVP":                lambda r: MVP(r),
     "ERC":                lambda r: ERC(r),
 }

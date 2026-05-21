@@ -16,7 +16,7 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
-from scipy.cluster.hierarchy import linkage
+from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.optimize import minimize
 from scipy.sparse.csgraph import minimum_spanning_tree
 from scipy.spatial.distance import squareform
@@ -1167,6 +1167,204 @@ class NetworkRiskParity(PortfolioStrategy):
 
         w = inverse_score / inverse_score.sum()
         self.weights = pd.Series(w, index=self.cov.index)
+        return self.weights
+
+
+def _auto_n_clusters(n_assets: int) -> int:
+    """Default cluster count for HERC / NCO: round(sqrt(N)) --- a standard
+    heuristic --- clamped to [2, N // 2]."""
+    return int(min(max(round(np.sqrt(max(n_assets, 1))), 2),
+                   max(2, n_assets // 2)))
+
+
+class HERC(HRP):
+    """Hierarchical Equal Risk Contribution (Raffinot 2018).
+
+    Shares HRP's hierarchical clustering of the correlation distance, but
+    replaces HRP's pairwise recursive bisection with an explicit two-stage
+    allocation: the dendrogram is cut into K clusters; assets are weighted
+    inverse-variance *within* each cluster; the K cluster portfolios are
+    then combined by an equal-risk-contribution allocation. Ward linkage
+    by default, as in Raffinot's paper.
+
+    Reference: Raffinot, T. (2018). The Hierarchical Equal Risk
+    Contribution Portfolio.
+    """
+
+    def __init__(self, returns: pd.DataFrame, linkage_method: str = "ward",
+                 n_clusters: Optional[int] = None) -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.n_clusters = n_clusters
+
+    def _clusters(self) -> dict:
+        assets = list(self.cov.index)
+        d = HRP.correl_dist(self.corr).values.copy()
+        d = (d + d.T) / 2.0
+        np.fill_diagonal(d, 0.0)
+        link = linkage(squareform(d, checks=False), self.linkage_method)
+        k = self.n_clusters or _auto_n_clusters(len(assets))
+        labels = fcluster(link, t=k, criterion="maxclust")
+        clusters: dict = {}
+        for a, lab in zip(assets, labels):
+            clusters.setdefault(int(lab), []).append(a)
+        return clusters
+
+    def get_weights(self) -> pd.Series:
+        clusters = self._clusters()
+        cl_ids = sorted(clusters)
+        intra, cl_returns = {}, {}
+        for lab in cl_ids:
+            items = clusters[lab]
+            iv = 1.0 / np.diag(self.cov.loc[items, items].values)
+            iv = iv / iv.sum()
+            intra[lab] = pd.Series(iv, index=items)
+            cl_returns[lab] = (self.returns[items] * iv).sum(axis=1)
+
+        if len(cl_ids) >= 2:
+            cl_df = pd.DataFrame({lab: cl_returns[lab] for lab in cl_ids})
+            inter = ERC(cl_df).get_weights()
+        else:
+            inter = pd.Series([1.0], index=cl_ids)
+
+        w = pd.Series(0.0, index=list(self.cov.index))
+        for lab in cl_ids:
+            w.loc[intra[lab].index] = float(inter[lab]) * intra[lab].values
+        self.weights = w / w.sum()
+        return self.weights
+
+
+class NCO(HRP):
+    """Nested Clustered Optimization (Lopez de Prado 2019).
+
+    Clusters assets hierarchically, solves a long-only minimum-variance
+    problem *within* each cluster sub-covariance, collapses each cluster
+    to a single synthetic asset (its intra-cluster portfolio), solves a
+    second long-only minimum-variance problem across the K cluster
+    portfolios, and combines the two stages. By only ever inverting block
+    sub-covariances and a small K x K matrix, NCO suppresses the
+    estimation-error amplification of a direct full-covariance optimiser.
+
+    Reference: Lopez de Prado, M. (2019). A Robust Estimator of the
+    Efficient Frontier.
+    """
+
+    def __init__(self, returns: pd.DataFrame, linkage_method: str = "ward",
+                 n_clusters: Optional[int] = None) -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.n_clusters = n_clusters
+
+    def get_weights(self) -> pd.Series:
+        clusters = HERC._clusters(self)
+        cl_ids = sorted(clusters)
+        intra, cl_returns = {}, {}
+        for lab in cl_ids:
+            items = clusters[lab]
+            if len(items) == 1:
+                intra[lab] = pd.Series([1.0], index=items)
+            else:
+                intra[lab] = MVP(self.returns[items]).get_weights()
+            cl_returns[lab] = (self.returns[items] * intra[lab]).sum(axis=1)
+
+        if len(cl_ids) >= 2:
+            cl_df = pd.DataFrame({lab: cl_returns[lab] for lab in cl_ids})
+            inter = MVP(cl_df).get_weights()
+        else:
+            inter = pd.Series([1.0], index=cl_ids)
+
+        w = pd.Series(0.0, index=list(self.cov.index))
+        for lab in cl_ids:
+            w.loc[intra[lab].index] = float(inter[lab]) * intra[lab].values
+        self.weights = w / w.sum()
+        return self.weights
+
+
+def _max_sharpe_weights(mu: np.ndarray, cov: np.ndarray) -> np.ndarray:
+    """Long-only weights maximising the Sharpe ratio w'mu / sqrt(w'Cov w).
+
+    Solved by SLSQP with a simplex constraint (w >= 0, sum w = 1). Falls
+    back to inverse-variance weights if the optimiser fails or the
+    expected-return vector admits no positive-Sharpe portfolio.
+    """
+    mu = np.asarray(mu, dtype=float)
+    cov = np.asarray(cov, dtype=float)
+    n = len(mu)
+    if n == 1:
+        return np.array([1.0])
+
+    def neg_sharpe(w):
+        pv = float(w @ cov @ w)
+        if pv <= 0:
+            return 0.0
+        return -float(w @ mu) / np.sqrt(pv)
+
+    cons = [{"type": "eq", "fun": lambda w: w.sum() - 1.0}]
+    bnds = [(0.0, 1.0)] * n
+    try:
+        res = minimize(neg_sharpe, np.full(n, 1.0 / n), method="SLSQP",
+                       bounds=bnds, constraints=cons,
+                       options={"maxiter": 200, "ftol": 1e-10})
+        w = np.clip(res.x, 0.0, None)
+        if res.success and w.sum() > 0 and np.isfinite(w).all():
+            return w / w.sum()
+    except Exception:
+        pass
+    iv = 1.0 / np.clip(np.diag(cov), 1e-12, None)
+    return iv / iv.sum()
+
+
+class NCOReturnTilted(NCO):
+    """Return-tilted Nested Clustered Optimization.
+
+    Identical clustering and nesting to :class:`NCO`, but each stage's
+    optimisation is long-only \emph{maximum Sharpe} rather than pure
+    minimum variance. The expected-return input is a shrunk medium-horizon
+    momentum estimate: the cumulative return over a `formation`-day window,
+    shrunk by `shrink` toward its cross-sectional mean (expected returns
+    are hard to estimate, so the tilt is deliberately gentle). This makes
+    the allocation step --- not just the dendrogram --- return-aware.
+    """
+
+    def __init__(self, returns: pd.DataFrame, linkage_method: str = "ward",
+                 n_clusters: Optional[int] = None, formation: int = 63,
+                 shrink: float = 0.5) -> None:
+        super().__init__(returns, linkage_method=linkage_method,
+                         n_clusters=n_clusters)
+        self.formation = formation
+        self.shrink = shrink
+
+    def _shrunk_momentum(self, df: pd.DataFrame) -> np.ndarray:
+        f = min(self.formation, len(df))
+        m = ((1.0 + df.iloc[-f:]).prod() - 1.0).values
+        grand = float(np.mean(m))
+        return grand + self.shrink * (m - grand)
+
+    def get_weights(self) -> pd.Series:
+        clusters = HERC._clusters(self)
+        cl_ids = sorted(clusters)
+        intra, cl_returns = {}, {}
+        for lab in cl_ids:
+            items = clusters[lab]
+            if len(items) == 1:
+                intra[lab] = pd.Series([1.0], index=items)
+            else:
+                sub = self.returns[items]
+                w = _max_sharpe_weights(self._shrunk_momentum(sub),
+                                        sub.cov().values)
+                intra[lab] = pd.Series(w, index=items)
+            cl_returns[lab] = (self.returns[items] * intra[lab]).sum(axis=1)
+
+        if len(cl_ids) >= 2:
+            cl_df = pd.DataFrame({lab: cl_returns[lab] for lab in cl_ids})
+            w = _max_sharpe_weights(self._shrunk_momentum(cl_df),
+                                    cl_df.cov().values)
+            inter = pd.Series(w, index=cl_ids)
+        else:
+            inter = pd.Series([1.0], index=cl_ids)
+
+        w = pd.Series(0.0, index=list(self.cov.index))
+        for lab in cl_ids:
+            w.loc[intra[lab].index] = float(inter[lab]) * intra[lab].values
+        self.weights = w / w.sum()
         return self.weights
 
 

@@ -186,6 +186,37 @@ def _sharpe(r: np.ndarray) -> float:
     return mu / sigma
 
 
+def _sharpe_diff_hac_se(a: np.ndarray, b: np.ndarray, bandwidth: int) -> float:
+    """Delta-method HAC standard error of the Sharpe-ratio difference.
+
+    The Sharpe ratio SR = mu / sqrt(gamma - mu^2) with gamma = E[r^2] is a
+    smooth function of the moments. For the difference Delta = SR_a - SR_b,
+    the delta method gives Var(Delta) = grad' Psi grad / n, where Psi is
+    the HAC (Bartlett-kernel) long-run covariance of the influence vector
+    y_t = (r_a, r_a^2, r_b, r_b^2). This is the standard error used by the
+    Ledoit-Wolf (2008) studentized test.
+    """
+    n = len(a)
+    mu_a, mu_b = float(a.mean()), float(b.mean())
+    ga, gb = float((a ** 2).mean()), float((b ** 2).mean())
+    va = max(ga - mu_a ** 2, 1e-16)
+    vb = max(gb - mu_b ** 2, 1e-16)
+    sa, sb = np.sqrt(va), np.sqrt(vb)
+    # gradient of Delta wrt (mu_a, gamma_a, mu_b, gamma_b):
+    #   d SR/d mu = gamma / sigma^3 ;  d SR/d gamma = -mu / (2 sigma^3)
+    grad = np.array([ga / sa ** 3, -mu_a / (2 * sa ** 3),
+                     -gb / sb ** 3,  mu_b / (2 * sb ** 3)])
+    Y = np.column_stack([a - mu_a, a ** 2 - ga, b - mu_b, b ** 2 - gb])
+    psi = Y.T @ Y / n
+    L = max(1, int(bandwidth))
+    for lag in range(1, L):
+        w = 1.0 - lag / L  # Bartlett kernel weight
+        g = Y[lag:].T @ Y[:-lag] / n
+        psi += w * (g + g.T)
+    var = float(grad @ psi @ grad / n)
+    return float(np.sqrt(max(var, 1e-20)))
+
+
 def sharpe_diff_ledoit_wolf(
     r_a: pd.Series | np.ndarray,
     r_b: pd.Series | np.ndarray,
@@ -193,25 +224,28 @@ def sharpe_diff_ledoit_wolf(
     block_size: float | None = None,
     seed: int = 42,
 ) -> dict:
-    """Robust Sharpe-ratio difference test via studentized block bootstrap.
+    """Ledoit-Wolf (2008) robust Sharpe-ratio difference test.
 
-    Tests H0: Sharpe(A) = Sharpe(B). Series must be the same length
-    (paired observations).
-
-    Implementation: paired stationary-block bootstrap of (r_a[t], r_b[t])
-    preserving time-coupling, then reports the bootstrap CI of the
-    Sharpe difference and a two-sided p-value based on the bootstrap
-    distribution.
+    Tests H0: Sharpe(A) = Sharpe(B) for paired return series. Implements
+    the studentized stationary-block bootstrap of Ledoit & Wolf (2008):
+    the observed Sharpe difference is studentized by a delta-method HAC
+    standard error (`_sharpe_diff_hac_se`); each bootstrap resample is
+    studentized by its own HAC standard error; the two-sided p-value is
+    the bootstrap tail probability of the studentized statistic. Student
+    -ising both the observed and bootstrap statistics is what gives the
+    test its asymptotic refinement and robustness to non-iid returns ---
+    a plain percentile bootstrap of the raw difference does not have it.
 
     Args:
         r_a, r_b: paired return series (same length).
         n_iter: bootstrap iterations.
-        block_size: expected block length; auto-selected if None.
+        block_size: expected block length; auto-selected (Politis-White)
+            if None. Also used as the HAC Bartlett-kernel bandwidth.
         seed: RNG seed.
 
     Returns:
-        dict: 'sharpe_a', 'sharpe_b', 'sharpe_diff', 'se', 'p_value',
-        'ci_95', 'block_size'.
+        dict: 'sharpe_a', 'sharpe_b', 'sharpe_diff', 'se', 'studentized',
+        'p_value', 'ci_95', 'block_size'.
     """
     a = np.asarray(r_a, dtype=float)
     b = np.asarray(r_b, dtype=float)
@@ -223,34 +257,38 @@ def sharpe_diff_ledoit_wolf(
 
     if block_size is None:
         block_size = optimal_block_length((a + b) / 2.0)
-    p = 1.0 / float(block_size)
-    p = float(min(max(p, 1e-6), 1.0))
+    bs = max(2, int(round(float(block_size))))
+    p = float(min(max(1.0 / bs, 1e-6), 1.0))
+
+    se = _sharpe_diff_hac_se(a, b, bandwidth=bs)
+    obs_stud = obs_diff / se if se > 0 else 0.0
 
     rng = np.random.default_rng(seed)
     diffs = np.empty(n_iter, dtype=float)
+    z = np.empty(n_iter, dtype=float)
     for i in range(n_iter):
         idx = _stationary_block_indices(n, p, rng)
-        diffs[i] = _sharpe(a[idx]) - _sharpe(b[idx])
+        aa, bb = a[idx], b[idx]
+        d = _sharpe(aa) - _sharpe(bb)
+        diffs[i] = d
+        se_b = _sharpe_diff_hac_se(aa, bb, bandwidth=bs)
+        z[i] = (d - obs_diff) / se_b if se_b > 0 else 0.0
 
-    se = float(diffs.std(ddof=1))
-    # Two-sided p-value: how often do the bootstrap diffs cross zero
-    # (using the bootstrap distribution centered at the observed diff).
-    centered = diffs - obs_diff
-    p_left = float(np.mean(centered <= -abs(obs_diff)))
-    p_right = float(np.mean(centered >= abs(obs_diff)))
-    p_value = float(min(1.0, p_left + p_right))
+    # Two-sided studentized-bootstrap p-value.
+    p_value = float(min(1.0, np.mean(np.abs(z) >= abs(obs_stud))))
 
     return {
         "sharpe_a": sa,
         "sharpe_b": sb,
         "sharpe_diff": obs_diff,
         "se": se,
+        "studentized": obs_stud,
         "p_value": p_value,
         "ci_95": (
             float(np.percentile(diffs, 2.5)),
             float(np.percentile(diffs, 97.5)),
         ),
-        "block_size": float(block_size),
+        "block_size": float(bs),
     }
 
 
@@ -267,88 +305,74 @@ def hansen_spa_test(
 ) -> pd.DataFrame:
     """Hansen (2005) Superior Predictive Ability test.
 
-    H0: max_k E[d_k] <= 0, where d_k = r_k - r_benchmark.
-    Reports the consistent, lower, and upper p-values per Hansen.
+    H0: max_k E[d_k] <= 0, where d_k = r_k - r_benchmark (no candidate
+    outperforms the benchmark). Reports the lower, consistent and upper
+    p-values per Hansen.
+
+    The three p-values are computed with the reference ``arch`` package
+    implementation (``arch.bootstrap.SPA``). An earlier hand-rolled
+    version mis-scaled the consistent-estimator recentering threshold by
+    a factor of sqrt(n), which produced p-values violating the
+    p_lower <= p_consistent <= p_upper ordering; delegating to ``arch``
+    removes that bug. ``arch`` works in terms of forecast *losses*
+    (lower = better), so we pass negated returns: a candidate with a
+    lower loss than the benchmark is one that beats it.
 
     Args:
         returns_matrix: T x K DataFrame of K candidate strategy returns.
         benchmark: T-vector of benchmark returns.
         n_bootstrap: bootstrap iterations.
-        block_size: expected block length; auto-selected if None.
+        block_size: expected block length; auto-selected (Politis-White)
+            if None.
         seed: RNG seed.
 
     Returns:
-        DataFrame with one row per strategy: columns 'mean_diff',
-        'studentized', 'p_lower', 'p_consistent', 'p_upper'.
+        DataFrame with one row per strategy. Columns 'mean_diff' and
+        'studentized' are per-candidate descriptive scores; 'p_lower',
+        'p_consistent', 'p_upper' are the grid-wide SPA p-values and are
+        therefore identical across rows by construction (the SPA is a
+        single joint test, not a per-candidate test).
     """
+    from arch.bootstrap import SPA
+
     R = returns_matrix.values
     B = np.asarray(benchmark, dtype=float)
     n, K = R.shape
     if len(B) != n:
         raise ValueError("benchmark must have same length as returns_matrix")
-    if R.shape[0] != n:
-        raise ValueError("returns_matrix length mismatch with benchmark")
 
-    D = R - B[:, None]  # n x K loss/perf differentials
+    D = R - B[:, None]  # n x K performance differentials
     d_bar = D.mean(axis=0)
 
     if block_size is None:
         block_size = optimal_block_length(B)
-    p_geom = 1.0 / float(block_size)
-    p_geom = float(min(max(p_geom, 1e-6), 1.0))
+    bs = int(max(2, round(float(block_size))))
 
-    # Long-run standard deviation of d_kt per Hansen (2005). The bootstrap
-    # estimates std-of-the-mean (=sigma/sqrt(n) under iid); multiply by sqrt(n)
-    # to recover the long-run series std that the studentization formula needs.
+    # Per-candidate descriptive studentized scores: long-run sd of d_kt
+    # via the stationary bootstrap (sqrt(n) * sd-of-the-mean).
     rng = np.random.default_rng(seed)
-    boot_diffs = np.empty((n_bootstrap, K), dtype=float)
+    p_geom = float(min(max(1.0 / bs, 1e-6), 1.0))
+    boot_means = np.empty((n_bootstrap, K), dtype=float)
     for i in range(n_bootstrap):
         idx = _stationary_block_indices(n, p_geom, rng)
-        boot_diffs[i, :] = D[idx, :].mean(axis=0)
-    omega = boot_diffs.std(axis=0, ddof=1) * np.sqrt(n)
+        boot_means[i, :] = D[idx, :].mean(axis=0)
+    omega = boot_means.std(axis=0, ddof=1) * np.sqrt(n)
     omega = np.where(omega <= 0, 1e-12, omega)
     studentized = np.sqrt(n) * d_bar / omega
-    T_n = float(max(0.0, studentized.max()))
 
-    # Three recentering schemes (Hansen 2005, Sec 4.1).
-    # The bootstrap statistic is sqrt(n)*(bar{d^*}_k - mu_hat_k)/omega_k; choice
-    # of mu_hat controls how aggressively we enforce H0 in the bootstrap.
-    #   mu_hat = d_bar_k → bootstrap centered at 0 → small boot_T → small p_value
-    #   mu_hat = 0       → bootstrap centered at d_bar_k → large boot_T → large p
-    # Hence: p_lower ≤ p_consistent ≤ p_upper.
-    log_n = max(np.log(np.log(n)), 1e-9) if n > 4 else 1.0
-    threshold = np.sqrt(2.0 * log_n / n)
-
-    mu_lower = d_bar.copy()                          # most aggressive recentering
-    mu_upper = np.zeros_like(d_bar)                  # no recentering
-    # Consistent: recenter only strategies that aren't clearly negative.
-    mu_consistent = np.where(d_bar >= -threshold * omega / np.sqrt(n), d_bar, 0.0)
-
-    def _spa_pvalue(mu_hat: np.ndarray) -> float:
-        # Hansen (2005): bootstrap statistic = sqrt(n)*(bar{d^*}_k - g(d_bar_k))/omega
-        # We subtract mu_hat AFTER taking the bootstrap mean (NOT recenter the data
-        # before bootstrap — that's a common mistake). For schemes where mu_hat = d_bar,
-        # the bootstrap distribution lands around zero (= H0); for schemes where mu_hat = 0,
-        # the bootstrap distribution stays around d_bar.
-        boot_T = np.empty(n_bootstrap, dtype=float)
-        for i in range(n_bootstrap):
-            idx = _stationary_block_indices(n, p_geom, rng)
-            db = D[idx, :].mean(axis=0)
-            stud_b = np.sqrt(n) * (db - mu_hat) / omega
-            boot_T[i] = max(0.0, stud_b.max())
-        return float(np.mean(boot_T > T_n))
-
-    p_lower = _spa_pvalue(mu_lower)
-    p_consistent = _spa_pvalue(mu_consistent)
-    p_upper = _spa_pvalue(mu_upper)
+    # SPA p-values via arch. Negate returns -> losses (lower = better).
+    spa = SPA(-B, -R, block_size=bs, reps=n_bootstrap,
+              bootstrap="stationary", studentize=True, seed=seed)
+    spa.compute()
+    pv = spa.pvalues  # Series indexed by 'lower', 'consistent', 'upper'
 
     return pd.DataFrame(
         {
             "mean_diff": d_bar,
             "studentized": studentized,
-            "p_lower": p_lower,
-            "p_consistent": p_consistent,
-            "p_upper": p_upper,
+            "p_lower": float(pv["lower"]),
+            "p_consistent": float(pv["consistent"]),
+            "p_upper": float(pv["upper"]),
         },
         index=returns_matrix.columns,
     )

@@ -27,7 +27,7 @@ sys.path.insert(0, "/Users/alanmatys/Repos/quant_ucema_final")
 from src.backtest import WalkForwardBacktest, COST_SCENARIOS, summarize_performance
 from src.portfolio_maker import (
     HRP, HRPDetoned, HRPPartialCorr, HRPDynamic, HRPTailDep, HRPTailDepShrunk,
-    HRPShrunkCov, HRPVolStd, IVP, MVP, ERC, MaxDiv,
+    HRPShrunkCov, HRPVolStd, IVP, MVP, ERC, MaxDiv, HERC, NCO,
     CrossSectionalMomentum, RiskManagedMomentum, MomentumHRP,
     HRPPathSig, HRPNodeEmbed, HRPContrastive, HRPTS2Vec,
 )
@@ -72,11 +72,17 @@ FACTORIES = {
         target_volatility=0.12, top_percentile=0.3),
     "MOM_HRP":           lambda r: MomentumHRP(
         r, formation_period=21, top_percentile=0.4, min_assets=5),
+    "HERC":              lambda r: HERC(r),
+    "NCO":               lambda r: NCO(r),
     "HRP_PathSig":       lambda r: HRPPathSig(r),
     "HRP_NodeEmbed":     lambda r: HRPNodeEmbed(r),
     "HRP_Contrastive":   lambda r: HRPContrastive(r),
     "HRP_TS2Vec":        lambda r: HRPTS2Vec(r),
 }
+# strategies that do NOT retrain a neural / random-walk embedding each
+# snapshot — safe to re-run at weekly cadence (the embeddings are not).
+NON_EMBED = [k for k in FACTORIES if k not in
+             ("HRP_PathSig", "HRP_NodeEmbed", "HRP_Contrastive", "HRP_TS2Vec")]
 
 
 def metrics_row(name, daily, res=None):
@@ -132,7 +138,10 @@ def run_scenario(start, end, rebalance_mode="calendar", cost="conservative_cex",
 print("\n=== Scenario B (headline) ===", flush=True)
 t0 = time.time()
 resB, dailyB = run_scenario("2020-01-01", "2026-05-18", label="B")
-hodl = prices["BTCUSDT"].loc["2020-01-01":"2026-05-18"].pct_change().dropna()
+# HODL_BTC on the SAME out-of-sample window as the strategies, so the
+# table, the CIs and the SPA all use one consistent BTC series.
+strat_idx = pd.DataFrame(dailyB).dropna().index
+hodl = prices["BTCUSDT"].pct_change().reindex(strat_idx)
 dailyB["HODL_BTC"] = hodl
 
 rows = [metrics_row(n, dailyB[n], resB[n]) for n in FACTORIES]
@@ -155,16 +164,19 @@ sh = {c: rdf[c].mean() / rdf[c].std(ddof=1) * ANN for c in rdf.columns}
 
 lw_rows, ci_rows = [], []
 for c in rdf.columns:
-    if c == "HRP":
-        pass
-    lw = sharpe_diff_ledoit_wolf(hrp.values, rdf[c].values, n_iter=3000, seed=42)
-    lw_rows.append({"name": c, "sharpe_diff_ann": sh["HRP"] - sh[c], "p_value": lw["p_value"]})
-    boot = stationary_block_bootstrap(rdf[c].values,
-                                      lambda r: float(np.mean(r) / np.std(r, ddof=1) * ANN) if np.std(r, ddof=1) > 0 else 0.0,
-                                      n_iter=2000, seed=42)
+    boot = stationary_block_bootstrap(
+        rdf[c].values,
+        lambda r: float(np.mean(r) / np.std(r, ddof=1) * ANN) if np.std(r, ddof=1) > 0 else 0.0,
+        n_iter=2000, seed=42)
     ci_rows.append({"name": c, "sharpe": sh[c],
                     "ci_lower_95": boot["ci_lower_95"], "ci_upper_95": boot["ci_upper_95"]})
-pd.DataFrame([r for r in lw_rows if r["name"] != "HRP"]).to_csv(f"{DATA}/inference_sharpe_diff.csv", index=False)
+    if c == "HRP":
+        continue
+    # candidate vs HRP; sharpe_diff_vs_hrp = candidate - HRP (positive = better)
+    lw = sharpe_diff_ledoit_wolf(rdf[c].values, hrp.values, n_iter=3000, seed=42)
+    lw_rows.append({"name": c, "sharpe_diff_vs_hrp": sh[c] - sh["HRP"],
+                    "lw_p_value": lw["p_value"]})
+pd.DataFrame(lw_rows).to_csv(f"{DATA}/inference_sharpe_diff.csv", index=False)
 pd.DataFrame(ci_rows).to_csv(f"{DATA}/inference_bootstrap_cis.csv", index=False)
 
 cand = rdf.drop(columns=["HRP"])
@@ -216,7 +228,8 @@ print("  -> backtest_v2_threshold_results.csv", flush=True)
 print("\n=== Post-COVID regime ===", flush=True)
 t0 = time.time()
 resP, dailyP = run_scenario("2022-01-01", "2026-05-18", label="postcovid")
-hodlP = prices["BTCUSDT"].loc["2022-01-01":"2026-05-18"].pct_change().dropna()
+strat_idxP = pd.DataFrame(dailyP).dropna().index
+hodlP = prices["BTCUSDT"].pct_change().reindex(strat_idxP)
 dailyP["HODL_BTC"] = hodlP
 rowsP = [metrics_row(n, dailyP[n], resP[n]) for n in FACTORIES]
 rowsP.append(metrics_row("HODL_BTC", hodlP, None))
@@ -229,13 +242,68 @@ lwP = []
 for c in rdfP.columns:
     if c == "HRP":
         continue
-    lw = sharpe_diff_ledoit_wolf(hrpP.values, rdfP[c].values, n_iter=3000, seed=42)
-    lwP.append({"name": c, "sharpe_diff_ann": shP["HRP"] - shP[c], "p_value": lw["p_value"]})
+    lw = sharpe_diff_ledoit_wolf(rdfP[c].values, hrpP.values, n_iter=3000, seed=42)
+    lwP.append({"name": c, "sharpe_diff_vs_hrp": shP[c] - shP["HRP"],
+                "lw_p_value": lw["p_value"]})
 pd.DataFrame(lwP).to_csv(f"{DATA}/inference_post_covid_sharpe_diff.csv", index=False)
 spaP = hansen_spa_test(rdfP.drop(columns=["HRP"]), hrpP.values, n_bootstrap=5000, seed=42)
 spaP.to_csv(f"{DATA}/inference_post_covid_spa.csv")
 with open(f"{DATA}/backtest_v2_post_covid_daily_returns.pkl", "wb") as f:
     pickle.dump(dailyP, f)
 print(f"  -> post-COVID CSVs  (SPA p_consistent={spaP['p_consistent'].iloc[0]:.4f})  [{time.time()-t0:.0f}s]", flush=True)
+
+# =====================================================================
+# Weekly-cadence robustness check (non-embedding strategies)
+# =====================================================================
+# 76 monthly rebalances give wide bootstrap CIs. A weekly cadence gives
+# ~4x the rebalances and tighter inference. The PIT universe is monthly,
+# so we carry each month-end's included set forward to the Fridays of
+# that month (membership monthly, weights recomputed weekly on a rolling
+# 365-day window). Embeddings are excluded (retraining 4 encoders at
+# ~330 weekly dates is prohibitive); this checks the risk-based family.
+print("\n=== Weekly-cadence check (non-embedding) ===", flush=True)
+t0 = time.time()
+pit_sorted = pit.sort_values("date")
+weekly_dates = pd.date_range("2020-01-01", "2026-05-18", freq="W-FRI")
+month_ends = sorted(pd.Timestamp(d) for d in pit["date"].unique())
+wk_rows = []
+for d in weekly_dates:
+    prior = [m for m in month_ends if m <= d]
+    if not prior:
+        continue
+    src = prior[-1]
+    inc = pit_sorted[(pit_sorted["date"] == src) & pit_sorted["included"]]
+    for _, r in inc.iterrows():
+        wk_rows.append({"date": d, "symbol": r["symbol"], "included": True})
+pit_weekly = pd.DataFrame(wk_rows)
+
+cm = COST_SCENARIOS["conservative_cex"]
+wk_daily = {}
+for i, name in enumerate(NON_EMBED, 1):
+    res = WalkForwardBacktest(prices, pit_weekly, FACTORIES[name],
+                              cost_model=cm).run("2020-01-01", "2026-05-18")
+    wk_daily[name] = res["daily_returns"]
+wk_idx = pd.DataFrame(wk_daily).dropna().index
+wk_daily["HODL_BTC"] = prices["BTCUSDT"].pct_change().reindex(wk_idx)
+wk_rdf = pd.DataFrame(wk_daily).dropna()
+wk_sh = {c: wk_rdf[c].mean() / wk_rdf[c].std(ddof=1) * ANN for c in wk_rdf.columns}
+wk_metrics = []
+for c in wk_rdf.columns:
+    boot = stationary_block_bootstrap(
+        wk_rdf[c].values,
+        lambda r: float(np.mean(r) / np.std(r, ddof=1) * ANN) if np.std(r, ddof=1) > 0 else 0.0,
+        n_iter=2000, seed=42)
+    wk_metrics.append({"strategy": c, "sharpe_ann": wk_sh[c],
+                       "total_return": float((1 + wk_rdf[c]).prod() - 1),
+                       "ci_lower_95": boot["ci_lower_95"],
+                       "ci_upper_95": boot["ci_upper_95"]})
+pd.DataFrame(wk_metrics).to_csv(f"{DATA}/backtest_v2_weekly_results.csv", index=False)
+wk_spa = hansen_spa_test(wk_rdf.drop(columns=["HRP"]), wk_rdf["HRP"].values,
+                         n_bootstrap=5000, seed=42)
+wk_spa.to_csv(f"{DATA}/inference_weekly_spa.csv")
+with open(f"{DATA}/backtest_v2_weekly_daily_returns.pkl", "wb") as f:
+    pickle.dump(wk_daily, f)
+print(f"  -> weekly CSVs  ({len(wk_rdf)} days, SPA p_consistent="
+      f"{wk_spa['p_consistent'].iloc[0]:.4f})  [{time.time()-t0:.0f}s]", flush=True)
 
 print("\nALL DONE.", flush=True)
