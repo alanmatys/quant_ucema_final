@@ -9,7 +9,12 @@ from __future__ import annotations
 import warnings
 import numpy as np, pandas as pd
 import sys
-sys.path.insert(0, "/Users/alanmatys/Repos/quant_ucema_final")
+# --- resolve the repo root so this script runs from any cwd / machine ---
+import os as _os
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_ROOT))
+_os.chdir(_ROOT)
 from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
 from src.backtest import _returns_for_window
@@ -17,7 +22,7 @@ from src.inference import cophenetic_correlation, adjusted_rand_between_snapshot
 from src.hrp_variants import lower_tail_dependence, tail_dependence_distance
 from src.universe import load_pit_universe
 warnings.filterwarnings("ignore")
-DATA = "/Users/alanmatys/Repos/quant_ucema_final/data"
+DATA = str(_ROOT / "data")
 
 pit = load_pit_universe(f"{DATA}/pit_universe.csv")
 ex = pd.read_csv(f"{DATA}/binance_usdt_pairs_2018-12-31_2024-01-01_1d.csv", parse_dates=["open_time"])

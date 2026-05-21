@@ -20,7 +20,12 @@ from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
 
 import sys
-sys.path.insert(0, "/Users/alanmatys/Repos/quant_ucema_final")
+# --- resolve the repo root so this script runs from any cwd / machine ---
+import os as _os
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_ROOT))
+_os.chdir(_ROOT)
 
 from src.backtest import WalkForwardBacktest, COST_SCENARIOS
 from src.portfolio_maker import HRP, HRPPathSig

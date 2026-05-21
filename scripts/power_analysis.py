@@ -15,10 +15,15 @@ import pickle
 import warnings
 import numpy as np, pandas as pd
 import sys
-sys.path.insert(0, "/Users/alanmatys/Repos/quant_ucema_final")
+# --- resolve the repo root so this script runs from any cwd / machine ---
+import os as _os
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_ROOT))
+_os.chdir(_ROOT)
 from src.inference import _sharpe_diff_hac_se, optimal_block_length, stationary_block_bootstrap
 warnings.filterwarnings("ignore")
-DATA = "/Users/alanmatys/Repos/quant_ucema_final/data"
+DATA = str(_ROOT / "data")
 ANN = np.sqrt(365)
 Z80 = 2.80  # d/SE needed for 80% power, two-sided 5% test
 

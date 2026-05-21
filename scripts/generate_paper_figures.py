@@ -11,6 +11,13 @@ from __future__ import annotations
 import warnings; warnings.filterwarnings("ignore")
 import time
 
+# --- resolve the repo root so this script runs from any cwd / machine ---
+import os as _os, sys as _sys
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parents[1]
+_sys.path.insert(0, str(_ROOT))
+_os.chdir(_ROOT)
+
 import matplotlib
 matplotlib.use("Agg")  # non-interactive backend
 import matplotlib.pyplot as plt

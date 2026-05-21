@@ -38,3 +38,6 @@ data/backtest_v2_returns_history.csv
 
 # Note: most .csv files in data/ ARE committed (PIT universe, results tables, etc.)
 # See specs/05_cleanup.md R4. Only large reproducible caches are ignored above.
+
+# uv / build artifacts
+*.egg-info/
