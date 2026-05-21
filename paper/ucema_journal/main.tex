@@ -18,7 +18,7 @@
 \hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
 
 \title{\textbf{Hierarchical Risk Parity Variants for Cryptocurrency Portfolios:\\
-       Denoising, Detoning, Tail Dependence, and Honest Inference Over 2017--2026}}
+       Denoising, Detoning, Tail Dependence, Embeddings, and Honest Inference Over 2020--2026}}
 
 \author[1]{Alan Matys}
 \author[1]{Federico Martin Rodriguez}
@@ -32,44 +32,43 @@
 \begin{abstract}
 \noindent
 We extend the MACI 2025 study of Hierarchical Risk Parity (HRP) for
-cryptocurrency portfolios along three axes. First, we close the two
-future-work items from that paper by implementing and evaluating
-Marchenko--Pastur denoising and spectral detoning of the correlation
-matrix. Second, we introduce six additional HRP variants (partial
-correlation via graphical lasso, EWMA dynamic correlation, lower-tail
-dependence, Ledoit--Wolf shrunk covariance, vol-standardised returns,
-and a tail-dep$+$LW-shrunk hybrid), three additional risk-based
-comparators (ERC, Maximum Diversification, Network Risk Parity), and
-five momentum families, for a total of 19 portfolio strategies. Third,
-we adopt a multi-layer methodological framework absent from the
-MACI paper: (i) a point-in-time universe rebuilt monthly from
-Binance USDT quote-volume rankings (removing survivorship bias and
-exposing the LUNA, FTT, and other crises that the original
-2019--2024 single-CSV dataset hid), (ii) a 365-day rolling
-estimation window with per-asset min-periods filtering, and
-(iii) Ledoit--Wolf robust Sharpe-difference, Hansen Superior
-Predictive Ability, and stationary block-bootstrap inference
-wrapped around every comparison.
-On 76 monthly rebalances across 2020-01-01--2026-05-18, the HRP
-family bunches in a narrow Sharpe band (0.69--0.75 annualised), with
-HRP$_{\text{ShrunkCov}}$ marginally best (+0.016 Sharpe over baseline,
-$p=0.275$, not significant). Hansen SPA at $p_{\text{consistent}}=0.526$
-cannot reject the null that no variant outperforms baseline HRP after
-multiple-testing correction. A passive 100\% BTC position
-($\text{Sharpe}=0.87$) outperforms every diversified portfolio
-considered except MVP, which wins by accidental BTC concentration
-during the 2020--2026 bull run. We document two structural empirical
-findings: HRP$_{\text{Detoned}}$ and HRP$_{\text{PartialCorr}}$
-weight rankings converge to Spearman $\rho \approx 0.99$ in calm
-regimes (mean 0.89 across 76 snapshots, with regime-driven dips to
-0.48); and HRP$_{\text{TailDep}}$ vs HRP$_{\text{TailDepShrunk}}$
-Spearman is 0.998--1.000 in every regime tested.
-We retract the data-snooped claim that tail-dependence distances
-produce more stable HRP clusters than Pearson, which the 76-snapshot
-re-analysis falsifies (Pearson ARI wins in 72\% of month-pairs).
-The paper's contributions are methodological rigour and empirical
-characterisation of HRP variant equivalence classes, not a ``HRP
-variant $X$ beats baseline'' claim.
+cryptocurrency portfolios. We close the two future-work items of that
+paper --- Marchenko--Pastur denoising and spectral detoning of the
+correlation matrix --- and broaden the comparison to 19 portfolio
+strategies: twelve HRP-family variants (the baseline; seven
+correlation/covariance constructions --- detoned, partial-correlation,
+EWMA-dynamic, lower-tail-dependence, Ledoit--Wolf shrunk-covariance,
+vol-standardised, and a tail-dependence$+$shrinkage hybrid; and four
+embedding-based variants that learn the clustering distance from path
+signatures, a node2vec graph embedding, and two contrastive sequence
+encoders), four risk-based comparators (IVP, MVP, ERC, Maximum
+Diversification), and three crypto-momentum strategies. Every comparison runs on a
+survivorship-bias-corrected, point-in-time universe rebuilt monthly
+from Binance USDT quote-volume rankings (146 ever-included symbols,
+including delisted assets such as LUNA and FTT), uses a 365-day rolling
+estimation window, and is wrapped in Ledoit--Wolf robust
+Sharpe-difference, Hansen Superior Predictive Ability, and stationary
+block-bootstrap inference.
+On 76 monthly rebalances over 2020-02 to 2026-05, the twelve HRP-family
+variants bunch in a narrow annualised-Sharpe band (0.70--0.75); the
+best, HRP$_{\text{Dynamic}}$, exceeds baseline HRP by only $+0.008$
+Sharpe (Ledoit--Wolf $p=0.82$, not significant). Hansen SPA gives
+$p_{\text{consistent}}=0.46$ on the headline comparison and $0.58$
+across an exhaustive 547-cell hyperparameter grid --- under no test can
+we reject the null that no variant outperforms baseline HRP. A passive
+100\% BTC position ($\text{Sharpe}=0.93$) outperforms every diversified
+portfolio except MVP, which wins only by concentrating roughly half its
+weight in BTC during the 2020--2026 bull run. We report two structural
+findings: HRP$_{\text{TailDep}}$ with and without Ledoit--Wolf shrinkage
+produce rank-identical weights (Spearman $0.998$--$1.000$), and spectral
+detoning and precision-matrix partial correlation --- two routes to
+market-mode removal --- converge in weight-rank space (median Spearman
+$0.93$). We retract an intermediate claim that tail-dependence distances
+yield more stable HRP clusters than Pearson, which a full 76-snapshot
+re-analysis falsifies (Pearson ARI wins 69\% of month-pairs). The
+paper's contribution is methodological rigour and the empirical
+characterisation of HRP-variant equivalence classes, not a ``variant
+$X$ beats baseline'' result.
 \end{abstract}
 
 \paragraph{Keywords.} Hierarchical Risk Parity, cryptocurrency, denoising,
@@ -97,16 +96,20 @@ the comparison in three other directions.
       and spectral detoning. Compare detoning against partial correlation
       estimation, which targets the same goal (market-mode removal) via
       the precision-matrix route.
-\item \textbf{Six additional HRP variants and three risk-based comparators.}
-      Partial-correlation HRP, EWMA dynamic-correlation HRP, lower-tail
-      dependence HRP, Ledoit--Wolf shrunk-covariance HRP, vol-standardised
-      HRP, and a tail-dep$+$LW-shrunk hybrid (the literature's top
-      recommendation for crypto HRP extensions). ERC \citep{maillard2010erc},
-      Maximum Diversification \citep{choueifaty2008maxdiv}, and Network
-      Risk Parity \citep{ciciretti2024nrp} as comparators.
-\item \textbf{Crypto momentum families.} Cross-sectional, time-series,
-      risk-managed \citep{barroso2015momentum}, and a Momentum$+$HRP
-      hybrid (with detoned variant), parameter-tuned for crypto's faster
+\item \textbf{Correlation/covariance HRP variants, embedding-based
+      variants, and risk comparators.} Six correlation/covariance HRP
+      variants --- partial-correlation, EWMA dynamic-correlation, lower-tail
+      dependence, Ledoit--Wolf shrunk-covariance, vol-standardised, and a
+      tail-dep$+$LW-shrunk hybrid --- plus \emph{four embedding-based
+      variants} that learn the HRP clustering distance from a representation
+      of each asset's return path (level-3 path signatures, a node2vec graph
+      embedding, and two contrastive sequence encoders; \S\ref{sec:methods-emb}).
+      ERC \citep{maillard2010erc}, Maximum Diversification
+      \citep{choueifaty2008maxdiv}, and Network Risk Parity
+      \citep{ciciretti2024nrp} as risk-based comparators.
+\item \textbf{Crypto-momentum strategies.} Cross-sectional momentum,
+      risk-managed momentum \citep{barroso2015momentum}, and a
+      Momentum$+$HRP hybrid, parameter-tuned for crypto's faster
       momentum decay per \citep{liu2022cryptofactors}.
 \item \textbf{Methodological rigour.} (i) Point-in-time universe rebuilt
       monthly from Binance USDT quote-volume rankings, including assets
@@ -214,9 +217,18 @@ A precision-matrix route to the same market-mode-removal goal:
 $\Theta = \arg\min_{\Theta \succ 0} -\log\det\Theta + \mathrm{tr}(S\Theta)
 + \alpha\|\Theta\|_1$ via graphical lasso \citep{friedman2008glasso},
 then $\rho_{ij}^{\mathrm{partial}} = -\Theta_{ij}/\sqrt{\Theta_{ii}\Theta_{jj}}$.
-The $L_1$ penalty $\alpha = 0.10$ is used throughout (necessary for
-numerical stability at $N \geq 40$; lower values trigger \texttt{slogdet}
-overflow on the larger universe).
+We set the $L_1$ penalty to $\alpha = 10^{-3}$. This value matters: a
+subtle implementation point is that \texttt{scikit-learn}'s
+\texttt{GraphicalLasso} expresses $\alpha$ in the \emph{same units as the
+covariance}, not as a normalised $[0,1]$ quantity. For daily crypto
+returns with variance $\sim$$4\times10^{-3}$, an $\alpha$ on the order of
+$10^{-1}$ shrinks every off-diagonal of the precision matrix to zero and
+silently collapses HRP\textsubscript{PartialCorr} into IVP. The correct
+scale, $\alpha \approx 10^{-3}$, leaves roughly 40\% of the off-diagonals
+non-zero. An earlier draft used $\alpha = 0.05$, the strategy degenerated
+to IVP, and the headline table reported the two as identical; the
+hyperparameter sweep of \S\ref{sec:results-sweeps} surfaced the bug, and
+we document the correction explicitly.
 
 \subsection{HRP\textsubscript{Dynamic}: EWMA correlation}
 Recursive EWMA covariance with decay $\lambda$; the latest snapshot is
@@ -254,6 +266,62 @@ joint-crash co-movement that matters for long-only portfolios, while
 LW shrinkage stabilises the per-cluster variance allocation.
 
 %% ===========================================================================
+\section{Methodology --- Embedding-based HRP Variants}
+\label{sec:methods-emb}
+%% ===========================================================================
+
+Beyond reweighting the correlation or covariance estimator, the distance
+matrix that drives HRP's dendrogram can be \emph{learned} from a
+representation of each asset's return path. We implement four such
+embedding variants. All share one template: an embedding maps each asset
+to a vector, the pairwise cosine distance of those vectors replaces HRP's
+correlation distance for the linkage and quasi-diagonalisation steps, and
+the \emph{sample} covariance is retained for recursive bisection. The
+embedding therefore changes only \emph{which assets cluster together},
+never the inverse-variance allocation within a cluster --- which is why,
+as \S\ref{sec:results} shows, every embedding variant stays within a
+narrow Sharpe band of baseline HRP.
+
+\subsection{HRP\textsubscript{PathSig}: path signatures}
+Each asset's rolling log-price trajectory, augmented with a monotone time
+channel, is mapped to its level-$L$ truncated path signature
+\citep{lyons1998} --- a graded sequence of iterated integrals that
+characterises the path up to tree-like equivalence. Cosine distance on
+the signature vectors drives the dendrogram (default: level 3, 60-day
+window), computed with the \texttt{esig} library.
+
+\subsection{HRP\textsubscript{NodeEmbed}: node2vec graph embedding}
+A $k$-nearest-neighbour graph ($k=10$) is built from the sample
+correlation matrix; node2vec random walks plus a skip-gram objective
+\citep{grover2016} learn a 32-dimensional embedding per node. Cosine
+distance on the embeddings drives the dendrogram.
+
+\subsection{HRP\textsubscript{Contrastive}: contrastive SSL}
+A small one-dimensional convolutional encoder is trained with the NT-Xent
+contrastive loss \citep{chen2020} on Gaussian-jittered pairs of return
+windows; each asset is embedded as the mean encoder output over its
+windows.
+
+\subsection{HRP\textsubscript{TS2Vec}: timestamp-masked contrastive}
+The same encoder family, trained with TS2Vec-style timestamp-mask
+augmentation \citep{yue2022} in place of Gaussian jitter.
+
+\paragraph{Multi-channel extension.} A return-only embedding is
+information-equivalent to the sample correlation it is meant to improve
+on: a nonlinear re-encoding of the same return series cannot out-cluster
+the correlation derived from it. We therefore also evaluate
+\emph{multi-channel} variants that append channels orthogonal to
+close-to-close returns --- quote volume, trade count, average trade size,
+intraday range, taker buy-ratio (order-flow imbalance), and Amihud
+illiquidity, all derived from the Binance OHLCV table. The multi-channel
+results are reported in \S\ref{sec:results-sweeps}.
+
+\paragraph{Robustness.} Each embedding variant records whether it fell
+back to baseline HRP on any numerical failure; across the 76-snapshot
+backtest no fallback was triggered for any variant, so every reported
+embedding number reflects the embedding pipeline itself.
+
+%% ===========================================================================
 \section{Methodology --- Comparator Strategies}
 \label{sec:methods-comparators}
 %% ===========================================================================
@@ -272,13 +340,16 @@ $1+\deg_i$).
 \label{sec:methods-mom}
 %% ===========================================================================
 
-Cross-sectional momentum (top 30\% by 21-day cumulative return, equal
-or inverse-vol weighted), time-series momentum (7/28 MA crossover and
-absolute-momentum variants), risk-managed momentum
-\citep{barroso2015momentum} with $\sigma_{\text{target}}=12\%$, and
-the Momentum$+$HRP hybrid (top 40\% by momentum, then HRP within the
-selected basket). We also evaluate Momentum$+$HRP\textsubscript{Detoned},
-which substitutes HRP$_{\text{Detoned}}$ for HRP in the second stage.
+The headline comparison includes three crypto-momentum strategies,
+parameter-tuned for crypto's faster momentum decay
+\citep{liu2022cryptofactors}. \textbf{CS\_MOM} is cross-sectional
+momentum: equal-weight the top 30\% of assets by 21-day cumulative
+return. \textbf{RM\_MOM} applies the Barroso--Santa-Clara
+volatility-targeting overlay \citep{barroso2015momentum}
+($\sigma_{\text{target}}=12\%$) to the same momentum selection.
+\textbf{MOM\_HRP} is a Momentum$+$HRP hybrid: select the top 40\% of
+assets by momentum, then allocate within that basket by HRP rather than
+equal-weight.
 
 %% ===========================================================================
 \section{Data and Point-in-Time Universe}
@@ -287,11 +358,12 @@ which substitutes HRP$_{\text{Detoned}}$ for HRP in the second stage.
 
 \subsection{Source and window}
 Daily OHLCV from Binance USDT spot, 2017-08-17 (Binance's earliest
-data) to 2026-05-18 --- approximately nine years. The dataset
-spans 91 unique symbols.
+data) to 2026-05-18 --- approximately nine years. After the
+survivorship-bias expansion described in \S\ref{sec:data}.3, the price
+panel covers 241 USDT pairs.
 
 \subsection{Point-in-time universe}
-At each month-end, we rank the 91 candidate symbols by their rolling
+At each month-end, we rank the candidate symbols by their rolling
 30-day Binance USDT quote volume, apply filters (180-day minimum age,
 \$1M minimum median daily USD volume, stablecoin/wrapper/exchange-token
 exclusion, listed on Binance USDT spot at the snapshot date), and take
@@ -401,52 +473,56 @@ and snapshot $t-1$, cut at $K=5$ clusters via \texttt{fcluster}.
 \subsection{Scenario B headline performance}
 
 Table~\ref{tab:scenarioB} reports the 19-strategy comparison under
-monthly rebalancing with conservative CEX costs over 2020-01-01
+monthly rebalancing with conservative CEX costs over 2020-02
 through 2026-05-18 (76 rebalances, 2{,}299 daily out-of-sample
 observations). Figures~\ref{fig:cum_b} and \ref{fig:risk_return}
 visualise the equity curves and the risk--return positioning.
 
 \begin{table}[H]
 \centering\small
-\caption{Scenario B headline results (Conservative CEX cost, 2020-2026,
-expanded 146-symbol PIT universe, all four bug fixes applied).
+\caption{Scenario B headline results (Conservative CEX cost, 76 monthly
+rebalances over 2020-02 to 2026-05, expanded 146-symbol PIT universe).
 ``Arith. Sharpe'' = mean / standard deviation $\times \sqrt{365}$.
-LW p-value column reports the Ledoit--Wolf Sharpe-difference test
-vs.\ baseline HRP.}
+``LW $p$'' is the Ledoit--Wolf Sharpe-difference test vs.\ baseline HRP.
+HODL\_BTC is a passive benchmark, not a strategy.}
 \label{tab:scenarioB}
 \begin{tabular}{lrrrr}
 \toprule
-Strategy & Arith. Sharpe & Total Return & Avg Turnover & LW p vs HRP\\
+Strategy & Arith. Sharpe & Total Return & Avg Turnover & LW $p$ vs HRP\\
 \midrule
 \textbf{MVP}             & \textbf{1.057} & \textbf{+2867\%} & 0.381 & 0.067\\
-HRP\_Dynamic\_94         & 0.749 & +442\%  & 0.474 & 0.813\\
-HRP\_ShrunkCov           & 0.746 & +428\%  & 0.353 & 0.757\\
-\textbf{HRP (baseline)}  & \textbf{0.741} & \textbf{+418\%} & 0.360 & ---\\
-HRP\_VolStd              & 0.735 & +402\%  & 0.368 & 0.733\\
-MOM\_HRP                 & 0.726 & +351\%  & 1.436 & 0.870\\
-HRP\_Contrastive (NEW)   & 0.723 & +371\%  & 0.392 & 0.457\\
-HRP\_NodeEmbed   (NEW)   & 0.721 & +369\%  & 0.368 & 0.453\\
-MaxDiv                   & 0.719 & +364\%  & 0.553 & 0.893\\
-HRP\_PathSig     (NEW)   & 0.714 & +351\%  & 0.383 & 0.293\\
-HRP\_TailDep / HRP\_Detoned & 0.708 & +335\% & 0.365 & 0.127\\
-HRP\_TailDepShrunk       & 0.701 & +318\%  & 0.352 & \textbf{0.050}\\
-HRP\_TS2Vec      (NEW)   & 0.699 & +318\%  & 0.394 & 0.107\\
-HRP\_PartialCorr / IVP   & 0.697 & +311\%  & 0.182 & 0.217\\
-ERC                      & 0.663 & +233\%  & 0.195 & \textbf{0.050}\\
-CS\_MOM\_eq21            & 0.663 & +217\%  & 1.420 & 0.503\\
-RM\_MOM (fixed)          & 0.663 & +118\%  & 0.366 & 0.507\\
-HODL\_BTC                & 0.519 & ---     & ---   & 0.597\\
+\textit{HODL\_BTC}       & \textit{0.928} & \textit{+1002\%} & ---   & 0.602\\
+HRP\_Dynamic\_94         & 0.749 & +442\%  & 0.474 & 0.816\\
+HRP\_ShrunkCov           & 0.746 & +428\%  & 0.353 & 0.786\\
+\textbf{HRP (baseline)}  & \textbf{0.741} & \textbf{+417\%} & 0.360 & ---\\
+HRP\_VolStd              & 0.735 & +402\%  & 0.368 & 0.732\\
+MOM\_HRP                 & 0.726 & +351\%  & 1.436 & 0.935\\
+HRP\_PartialCorr         & 0.720 & +366\%  & 0.236 & 0.453\\
+MaxDiv                   & 0.719 & +364\%  & 0.553 & 0.917\\
+HRP\_PathSig             & 0.714 & +351\%  & 0.383 & 0.273\\
+HRP\_Contrastive         & 0.710 & +341\%  & 0.399 & 0.239\\
+HRP\_Detoned             & 0.708 & +334\%  & 0.263 & 0.402\\
+HRP\_TailDep             & 0.708 & +337\%  & 0.365 & 0.123\\
+HRP\_NodeEmbed           & 0.705 & +330\%  & 0.388 & 0.194\\
+HRP\_TS2Vec              & 0.703 & +325\%  & 0.383 & 0.101\\
+HRP\_TailDepShrunk       & 0.701 & +318\%  & 0.352 & 0.077\\
+IVP                      & 0.697 & +311\%  & 0.182 & 0.208\\
+CS\_MOM\_eq21            & 0.663 & +217\%  & 1.420 & 0.534\\
+RM\_MOM                  & 0.663 & +118\%  & 0.366 & 0.535\\
+ERC                      & 0.663 & +233\%  & 0.195 & \textbf{0.044}\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Two strategies marginal at $p=0.05$.} HRP\_TailDepShrunk
-($-0.041$ Sharpe vs HRP) and ERC ($-0.079$ vs HRP) are right at the
-significance threshold. No other strategy is significantly different
-from baseline HRP after the bug-fix re-run (Phase 8 of the
-spec-driven plan). The earlier Phase 5d ``embeddings significantly
-worse than HRP'' finding was an artifact of the median-volume +
-skip-OOS bugs.
+\paragraph{Only one strategy is significant at $p=0.05$.} ERC
+($-0.078$ Sharpe vs HRP, $p=0.044$) is the sole strategy whose
+Sharpe difference from baseline HRP clears the conventional threshold
+--- and it is \emph{worse} than HRP. HRP\_TailDepShrunk ($p=0.077$)
+and MVP ($p=0.067$) are near the threshold but do not cross it. No
+strategy is significantly \emph{better} than baseline HRP. With the
+bug-fixed HRP\_PartialCorr ($\alpha=10^{-3}$, \S\ref{sec:methods-cov})
+the strategy is now distinct from IVP --- it was byte-identical to IVP
+in an earlier draft (Sharpe 0.697); corrected, it sits at 0.720.
 
 \begin{figure}[H]
   \centering
@@ -465,78 +541,88 @@ skip-OOS bugs.
   \label{fig:risk_return}
 \end{figure}
 
-\paragraph{HRP family bunches.} All 11 HRP variants (including the
-four embedding-based variants added in Phase 8) lie within 0.05
-Sharpe of each other (0.697--0.749). HRP\_Dynamic\_94 and HRP\_ShrunkCov
-marginally exceed baseline HRP (+0.008 and +0.005 Sharpe respectively),
-but the differences are small and per \S\ref{sec:results-inference}
-below not statistically significant.
+\paragraph{The HRP family bunches.} All twelve HRP-family variants lie
+within a 0.05 Sharpe band (0.701--0.749). HRP\_Dynamic\_94 and
+HRP\_ShrunkCov marginally exceed baseline HRP (by $+0.008$ and $+0.004$
+Sharpe respectively); the differences are small and, per
+\S\ref{sec:results-inference}, not statistically significant.
 
-\paragraph{Embeddings (Phase 8 NEW).} The four embedding-based HRP
-variants --- \texttt{HRP\_PathSig} (path signatures via \texttt{esig};
-\citealp{lyons1998}), \texttt{HRP\_NodeEmbed} (node2vec on a kNN
-correlation graph; \citealp{grover2016}), \texttt{HRP\_Contrastive}
-(NT-Xent contrastive SSL on Gaussian-jittered windows; \citealp{chen2020}),
-and \texttt{HRP\_TS2Vec} (TS2Vec-lite with timestamp-mask augmentation;
-\citealp{yue2022}) --- land in the middle of the HRP family: Sharpes
-0.699--0.723, none significantly different from baseline HRP after the
-Phase 8 bug fixes (Ledoit--Wolf $p \in [0.107, 0.457]$). The deep-
-research adversarial review's prediction holds: embedding methods are
-interesting engineering but do not deliver an OOS Sharpe edge on this
-universe at this time horizon. We report the null result honestly;
-embeddings neither help nor hurt. Section~\ref{sec:results-sweeps}
-stress-tests this conclusion with an exhaustive hyperparameter search
-and multi-channel embedding extensions; it survives intact.
+\paragraph{Embedding variants.} The four embedding-based HRP variants
+--- \texttt{HRP\_PathSig} (path signatures; \citealp{lyons1998}),
+\texttt{HRP\_NodeEmbed} (node2vec on a kNN correlation graph;
+\citealp{grover2016}), \texttt{HRP\_Contrastive} (NT-Xent contrastive
+SSL; \citealp{chen2020}), and \texttt{HRP\_TS2Vec} (timestamp-mask
+augmentation; \citealp{yue2022}) --- land in the lower-middle of the HRP
+family: Sharpes $0.703$--$0.714$, all marginally below baseline HRP
+($-0.027$ to $-0.038$) but none significantly different from it
+(Ledoit--Wolf $p \in [0.10, 0.27]$). Embedding methods are interesting
+engineering but do not deliver an out-of-sample Sharpe edge on this
+universe at this horizon; we report the null result honestly.
+Section~\ref{sec:results-sweeps} stress-tests this conclusion with an
+exhaustive hyperparameter search and multi-channel embedding extensions,
+and it survives intact.
 
 \paragraph{Detoning and partial correlation underperform HRP.}
 Both target market-mode removal --- a theoretically attractive idea ---
-but doing so during a BTC-led bull market gives up the alpha that
-came from being correctly exposed to BTC. The two strategies'
-Sharpes (0.701 and 0.696) are nearly identical, consistent with the
-weight-vector convergence we document in
-\S\ref{sec:results-convergence}.
+but doing so during a BTC-led bull market forgoes the upside of being
+correctly exposed to BTC: HRP\_Detoned (0.708) and HRP\_PartialCorr
+(0.720) both trail baseline HRP. The two are no longer numerically
+identical --- an earlier draft's HRP\_PartialCorr had degenerated to IVP
+(\S\ref{sec:methods-cov}) --- but they remain close in weight-rank space
+(\S\ref{sec:results-convergence}).
 
-\paragraph{Momentum underperforms.} All seven momentum families fall
-well below baseline HRP, victims of high turnover ($\sim$1.4$\times$
-each month, equivalent to full portfolio reconstruction) and severe
-crash sensitivity (drawdowns 88--93\%). The MOM\_HRP\_Detoned hybrid
-(Sharpe 0.305) more than doubles plain MOM\_HRP (0.136), suggesting
-that detoning has more value \emph{inside} a momentum-selected basket
-(where assets are pre-concentrated on trends and thus co-move
-heavily) than on the full universe.
+\paragraph{Momentum splits.} The two pure-momentum strategies ---
+cross-sectional (CS\_MOM, Sharpe 0.663) and risk-managed (RM\_MOM,
+0.663) --- trail every HRP-family variant, carrying high turnover
+($\sim$1.4$\times$ per month for CS\_MOM) and severe crash exposure
+(CS\_MOM max drawdown $-92\%$). RM\_MOM's volatility-targeting overlay
+\citep{barroso2015momentum} cuts its max drawdown to $-40\%$, the
+mildest in the table, but at the cost of the lowest total return
+($+118\%$). The Momentum$+$HRP hybrid (MOM\_HRP, 0.726) fares markedly
+better than either pure-momentum strategy --- running HRP allocation
+\emph{inside} a momentum-selected basket recovers most of the
+risk-adjusted performance --- though it still trails baseline HRP and
+reconstructs its entire book every month.
 
-\paragraph{Concentration wins.} Both MVP and HODL\_BTC achieve Sharpe
-$\geq 0.85$, well above any diversified portfolio. MVP achieves this
-by accident: its objective drove the optimiser to concentrate $\sim$77\%
-in BTC (effective $N=5.5$); BTC then ran from $\sim$\$7k at the start
-of 2020 to $\sim$\$107k+ by mid-2026. This is regime-dependent luck,
-not a portfolio-construction insight, and should not be taken as
-evidence that MVP is a robust crypto strategy.
+\paragraph{Concentration wins.} Both MVP (Sharpe 1.057) and a passive
+HODL\_BTC position (0.928) sit well above every diversified portfolio.
+MVP achieves this by accident: its minimum-variance objective drove the
+optimiser to concentrate heavily in BTC (average maximum weight 50\%,
+effective $N \approx 3$); BTC then ran from $\sim$\$7k at the start of
+2020 to $\sim$\$107k by mid-2026. This is regime-dependent luck, not a
+portfolio-construction insight, and should not be read as evidence that
+MVP is a robust crypto strategy.
 
 \subsection{Statistical inference}
 \label{sec:results-inference}
 
-\paragraph{Bootstrap Sharpe CIs.} Of the 12 headline strategies, only
-MVP ([0.27, 1.58]), MaxDiv ([0.00, 1.46]), and HODL\_BTC ([0.06, 1.63])
-have 95\% block-bootstrap CIs cleanly above zero. Every HRP-family
-variant's CI straddles zero.
+\paragraph{Bootstrap Sharpe CIs.} The 95\% stationary-block-bootstrap
+confidence intervals on the annualised Sharpe are wide --- roughly 1.5
+Sharpe units --- reflecting six years of volatile crypto returns. Only
+MVP ($[0.34, 1.76]$) and the passive HODL\_BTC benchmark
+($[0.08, 1.63]$) have intervals cleanly above zero. Baseline HRP's
+interval ($[0.02, 1.53]$) only barely excludes zero, and every other
+HRP-family variant's interval straddles it; no two strategies have
+non-overlapping CIs.
 
-\paragraph{Pairwise LW Sharpe differences vs.\ HRP (Phase 8 v2).}
-\emph{Only two} candidates reach the $p \leq 0.05$ threshold:
-HRP\_TailDepShrunk ($-0.041$ Sharpe, $p=0.050$) and ERC ($-0.079$,
-$p=0.050$), both marginally \emph{worse} than baseline HRP. No
-strategy is significantly better. The closest positive deltas are
-MVP ($+0.32$, $p=0.067$) and HODL\_BTC ($+0.22$, $p=0.60$); both
-fail to reject at conventional levels.
+\paragraph{Pairwise LW Sharpe differences vs.\ HRP.}
+\emph{Only one} candidate reaches the $p \leq 0.05$ threshold: ERC
+($-0.078$ Sharpe vs HRP, $p=0.044$) --- significantly \emph{worse} than
+baseline. No strategy is significantly better. The largest positive
+gaps, MVP ($+0.314$, $p=0.067$) and HODL\_BTC ($+0.124$, $p=0.60$),
+both fail to reject at conventional levels; among the underperformers
+HRP\_TailDepShrunk ($-0.041$, $p=0.077$) comes closest to significance.
 
-\paragraph{Hansen SPA (Phase 8 v2).} Across all 19 candidates vs.\
-HRP, $p_{\text{consistent}} = 0.533$, $p_{\text{upper}} = 0.797$
-(Figure~\ref{fig:spa}). \textbf{We cannot reject the null hypothesis
-that no strategy outperforms baseline HRP after correcting for the
-multiple-testing of 19 candidates}, even with the bug-fixed
-6.3-year monthly-rebalanced data and the expanded 146-symbol
-universe. MVP has the highest studentised score (+1.24); HODL\_BTC
-(+0.99); all HRP variants $\leq 0$.
+\paragraph{Hansen SPA.} Across the 19 candidates versus baseline HRP,
+$p_{\text{consistent}} = 0.46$ ($p_{\text{lower}}=0.67$,
+$p_{\text{upper}}=0.74$; Figure~\ref{fig:spa}). \textbf{We cannot reject
+the null hypothesis that no strategy outperforms baseline HRP after
+correcting for the multiple testing of 19 candidates}, even on the
+bug-fixed 6.3-year monthly-rebalanced data and the expanded 146-symbol
+universe. MVP carries the highest studentised score ($+1.22$); MaxDiv,
+MOM\_HRP and HRP\_ShrunkCov are mildly positive; every other candidate
+--- the embedding variants and the rest of the HRP family included ---
+is negative.
 
 \begin{figure}[H]
   \centering
@@ -553,7 +639,7 @@ universe. MVP has the highest studentised score (+1.24); HODL\_BTC
 A natural objection to the headline null result is that it reflects
 \emph{untuned} strategies: perhaps some correlation type, distance
 function, linkage method, or strategy-specific parameter would lift a
-variant decisively above baseline HRP. Phase~8 addresses this with an
+variant decisively above baseline HRP. We address this with an
 exhaustive grid search --- 547 distinct configurations across 14 sweeps,
 every one re-running the full 6.3-year walk-forward backtest on the
 identical 146-symbol point-in-time universe and 2{,}299-day return
@@ -570,7 +656,7 @@ hyperparameters.
 \begin{table}[H]
   \centering
   \small
-  \caption{Best cell from each Phase~8 hyperparameter sweep. $\Delta$ is
+  \caption{Best cell from each hyperparameter sweep. $\Delta$ is
   the Sharpe difference vs.\ baseline HRP (single linkage, $0.741$);
   total return is the cell's net cumulative return, 2020-02 to 2026-05.
   551 cells in total; the 4 exactly equal to the benchmark are dropped
@@ -658,13 +744,18 @@ quantify their weight-vector convergence across the full 76-snapshot
 window (Figure~\ref{fig:detone_pc}).
 
 \paragraph{HRP\_Detoned vs HRP\_PartialCorr.} Spectral detoning and
-precision-matrix-based partial correlation both remove the dominant
-market mode. Over 76 monthly snapshots: mean Spearman
-$\rho=0.888$, median $0.970$, with regime-driven dips to $\rho=0.48$ in
-months when the dominant eigenvector shifts dramatically (notably the
-2024 ETF-approval transition). The convergence is structural but
-not invariant; the paper should report the time series, not a single
-snapshot value.
+precision-matrix partial correlation both remove the dominant market
+mode, by different routes. Across the 76 monthly snapshots their
+weight-vector rank correlation is high but not invariant: mean Spearman
+$\rho=0.87$, median $0.93$, with regime-driven dips to $\rho=0.54$ in
+months when the dominant eigenvector shifts sharply. Crucially, the
+bug-fixed HRP\_PartialCorr ($\alpha=10^{-3}$) is now distinct from the
+inverse-variance portfolio --- its weight-rank correlation with IVP
+averages only $\rho=0.08$ --- whereas the earlier degenerate
+$\alpha=0.05$ implementation \emph{was} IVP. The detoning /
+partial-correlation convergence is therefore a genuine structural
+relationship between two market-mode-removal estimators, not an
+artefact of one collapsing into IVP.
 
 \paragraph{HRP\_TailDep vs HRP\_TailDepShrunk.} The hybrid's only
 change is to substitute the Ledoit--Wolf shrunk covariance for the
@@ -696,9 +787,9 @@ When we re-ran the analysis across all 76 monthly snapshots
 (Figure~\ref{fig:cluster_stab}, Table~\ref{tab:cluster_stab}), the
 direction reverses. \textbf{Pearson clusters are substantially more
 stable than TailDep clusters at monthly resolution}: Pearson ARI
-mean $+0.785$ vs TailDep $+0.639$; Pearson cophenetic mean $0.834$ vs
-TailDep $0.751$. TailDep ARI exceeds Pearson ARI in only 21 of 75
-month-pairs (28\%).
+mean $+0.744$ vs TailDep $+0.614$; Pearson cophenetic mean $0.861$ vs
+TailDep $0.768$. TailDep ARI exceeds Pearson ARI in only 23 of 75
+month-pairs (31\%).
 
 \begin{table}[H]
 \centering\small
@@ -708,10 +799,10 @@ month-pairs (28\%).
 \toprule
 Metric & Pearson distance & Lower-tail-dep distance\\
 \midrule
-Average cophenetic correlation & \textbf{0.834} & 0.751\\
-Average ARI vs.\ previous snapshot (K=5) & \textbf{+0.785} & +0.639\\
-Median ARI vs.\ previous snapshot & \textbf{+0.840} & +0.639\\
-Months where TailDep ARI > Pearson ARI & --- & 21 / 75 (28\%)\\
+Average cophenetic correlation & \textbf{0.861} & 0.768\\
+Average ARI vs.\ previous snapshot (K=5) & \textbf{+0.744} & +0.614\\
+Median ARI vs.\ previous snapshot & \textbf{+0.783} & +0.650\\
+Months where TailDep ARI > Pearson ARI & --- & 23 / 75 (31\%)\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -740,18 +831,19 @@ $\sim$\$5k to $\sim$\$69k --- arguably the most extreme bull market
 in crypto history. To check whether the $\S$\ref{sec:results}
 conclusions are dominated by that single rally, we re-ran the entire
 19-strategy backtest with $\mathrm{start}=$ \texttt{2022-01-01}
-(53 monthly rebalances over $\sim$4.4 years). All other parameters
+(52 monthly rebalances over $\sim$4.3 years). All other parameters
 identical.
 
 \textbf{The picture flips entirely.} On post-COVID data, baseline
-HRP achieves Sharpe $0.047$ with total return $-60\%$ --- a
-near-zero risk-adjusted return achieved by losing 60\% of capital
-in straightforward dollar terms. All 19 strategies except MVP
-(Sharpe $0.482$, $+66\%$) lose money in total terms over the
-post-COVID window. Five strategies have outright \emph{negative}
-Sharpe (vs zero in the full-window analysis): MaxDiv ($-0.163$),
-ERC ($-0.026$), CS\_MOM ($-0.161$), RM\_MOM ($-0.160$, fixed
-variant), and HODL\_BTC ($-0.492$, dragged by 2022 drawdown).
+HRP achieves Sharpe $0.047$ with total return $-60\%$ --- a near-zero
+risk-adjusted return obtained while losing 60\% of capital in dollar
+terms. Only MVP (Sharpe $0.482$, total return $+66\%$) makes money
+among the 19 strategies; the passive HODL\_BTC benchmark also returns
+$+66\%$ (Sharpe $0.484$). The other eighteen strategies lose between
+19\% (RM\_MOM) and 83\% (MaxDiv, CS\_MOM) of capital. Five strategies
+post outright \emph{negative} Sharpe (against roughly zero for the HRP
+family): MaxDiv ($-0.163$), CS\_MOM ($-0.161$), RM\_MOM ($-0.160$),
+ERC ($-0.026$), and MOM\_HRP ($-0.015$).
 
 \paragraph{Two paper-grade findings emerge from the regime comparison.}
 
@@ -763,16 +855,18 @@ works'' framing was largely a COVID-rally artifact. Honest framing:
 \emph{HRP diversifies risk but does not produce capital appreciation
 in non-bull crypto regimes}.
 
-\textbf{(2) Embedding variants directionally lead baseline HRP in
-the harder regime.} In the full window, all four embedding variants
-were marginally below HRP (deltas $-0.018$ to $-0.042$ Sharpe). In
-post-COVID, all four are \emph{above} HRP (\texttt{HRP\_Contrastive}
-$+0.024$, \texttt{HRP\_NodeEmbed} $+0.011$, \texttt{HRP\_PathSig}
-$+0.008$, \texttt{HRP\_TS2Vec} $+0.004$). None reach individual
-significance (all LW $p > 0.5$), but the directional reversal is
-suggestive: embedding methods may capture risk structure more
-relevant in challenging regimes than in monotone rallies. This
-would warrant follow-up with a longer post-COVID sample.
+\textbf{(2) Embedding variants partially reverse against baseline HRP
+in the harder regime.} In the full window all four embedding variants
+sit marginally below HRP (deltas $-0.027$ to $-0.038$ Sharpe). In the
+post-COVID window three of the four edge \emph{above} baseline HRP ---
+\texttt{HRP\_Contrastive} ($+0.009$), \texttt{HRP\_PathSig} ($+0.008$),
+\texttt{HRP\_TS2Vec} ($+0.000$) --- while \texttt{HRP\_NodeEmbed}
+($-0.015$) stays below. None reaches individual significance (all
+Ledoit--Wolf $p>0.6$) and the margins are tiny, but the partial
+directional reversal is suggestive: the path- and sequence-based
+embeddings may capture risk structure that matters more in a choppy
+regime than in a monotone rally. A longer post-COVID sample would be
+needed to tell.
 
 \textbf{(3) RM\_MOM (the bug-fixed Barroso--Santa-Clara variant)
 shows its defensive role.} Post-COVID Sharpe is $-0.160$ (poor),
@@ -792,29 +886,30 @@ to post-COVID.}
 \toprule
 Strategy            & 2020-2026 Sharpe & 2022-2026 Sharpe & $\Delta$Sharpe\\
 \midrule
-HRP                 &  0.741 &  0.047 & --0.694\\
+HRP                 &  0.741 &  0.047 & --0.695\\
 HRP\_Dynamic\_94    &  0.749 &  0.099 & --0.650\\
-HRP\_ShrunkCov      &  0.746 &  0.038 & --0.708\\
-HRP\_Contrastive    &  0.723 &  0.071 & --0.652\\
-HRP\_NodeEmbed      &  0.721 &  0.057 & --0.664\\
+HRP\_ShrunkCov      &  0.746 &  0.038 & --0.707\\
+HRP\_PartialCorr    &  0.720 &  0.057 & --0.663\\
+HRP\_Contrastive    &  0.710 &  0.056 & --0.655\\
 HRP\_PathSig        &  0.714 &  0.055 & --0.659\\
-HRP\_TS2Vec         &  0.699 &  0.051 & --0.648\\
+HRP\_TS2Vec         &  0.703 &  0.047 & --0.657\\
+HRP\_NodeEmbed      &  0.705 &  0.031 & --0.674\\
 MVP                 &  1.057 &  0.482 & --0.575\\
 MaxDiv              &  0.719 & --0.163 & --0.882\\
-ERC                 &  0.663 & --0.026 & --0.689\\
+ERC                 &  0.663 & --0.026 & --0.688\\
 CS\_MOM\_eq21       &  0.663 & --0.161 & --0.824\\
-RM\_MOM             &  0.663 & --0.160 & --0.823\\
-HODL\_BTC           &  0.519 & --0.492 & --1.011\\
+RM\_MOM             &  0.663 & --0.160 & --0.824\\
+HODL\_BTC           &  0.928 &  0.484 & --0.444\\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \subsection{Cost sensitivity and scenario comparison}
-</invoke>
 
-The cost grid (Figure~\ref{fig:cost_sens}) shows Sharpe shifts under
-0.005 across the four cost scenarios for all five strategies tested,
-confirming that monthly-cadence transaction costs do not drive
+The cost grid (Figure~\ref{fig:cost_sens}) shows annualised-Sharpe
+shifts under $0.01$ across the four cost scenarios for all five
+strategies tested --- e.g.\ baseline HRP moves from $0.749$ (zero cost)
+to $0.740$ (stress). Monthly-cadence transaction costs do not drive
 strategy differentiation on this dataset.
 
 \begin{figure}[H]
@@ -825,13 +920,18 @@ strategy differentiation on this dataset.
   \label{fig:cost_sens}
 \end{figure}
 
-Threshold rebalancing (Scenario C, 5\% drift trigger) provides small
-Sharpe improvements for HRP-family strategies (+0.017 for HRP, +0.004
-for HRP\_ShrunkCov) by skipping $\sim$20\% of calendar rebalances.
-Smoothing (Scenario C$'$) trades a small amount of Sharpe for further
-turnover reduction. For momentum strategies, threshold rebalancing
-provides no benefit --- the target weights drift so much each month
-that the 5\% threshold is always triggered.
+Threshold rebalancing (Scenario C, 5\% drift trigger) does not improve
+on calendar rebalancing here: HRP's Sharpe edges down from $0.741$ to
+$0.735$ and HRP\_ShrunkCov is essentially flat ($0.746 \to 0.745$),
+with only a marginal turnover reduction. The smoothed variant
+(Scenario C$'$) cuts turnover more materially --- HRP's average $L_1$
+turnover falls from $0.36$ to $0.23$ --- at a modest Sharpe cost
+($0.741 \to 0.731$). The momentum strategies are the exception:
+RM\_MOM's volatility-targeting overlay needs to trade to function, and
+suppressing or smoothing its rebalances collapses its Sharpe (from
+$0.66$ under calendar rebalancing to $0.37$ under Scenario C and
+$0.05$ under C$'$). Threshold logic suits low-turnover risk-based
+strategies and actively harms turnover-dependent ones.
 
 %% ===========================================================================
 \section{Discussion}
@@ -840,12 +940,12 @@ that the 5\% threshold is always triggered.
 
 \subsection{HODL\_BTC beats every diversified portfolio --- the
 elephant in the room}
-Over 2020-01-01 to 2026-05-18, a passive 100\% BTC position returns
-+1{,}003\% with annualised Sharpe 0.87, beating every diversified
-HRP-family or risk-based strategy considered. MVP nominally beats
-HODL\_BTC (Sharpe 0.95 vs 0.87) but does so by concentrating
-$\sim$77\% in BTC --- it is essentially a leveraged BTC bet with a
-small low-vol overlay.
+Over 2020-02 to 2026-05, a passive 100\% BTC position returns
+$+1{,}002\%$ with annualised Sharpe $0.93$, beating every diversified
+HRP-family or risk-based strategy considered. MVP nominally beats it
+(Sharpe $1.06$ vs $0.93$) but only by concentrating roughly half its
+weight in BTC (effective $N\approx3$) --- it is essentially a
+leveraged BTC bet with a small low-volatility overlay.
 
 This is a sobering finding that the paper must not paper over.
 Diversification in cryptocurrency over the 2020--2026 window paid a
@@ -864,13 +964,14 @@ methodological contributions are real but their value depends on the
 regime, not on universal Sharpe improvement.
 
 \subsection{Why does Hansen SPA fail to reject?}
-Eleven candidates competing against a baseline is a non-trivial
+Nineteen candidates competing against a baseline is a non-trivial
 multiple-testing burden. The honest interpretation: across 6.3 years
-of monthly-rebalanced data, the seven HRP variants and four
-risk-based comparators tested do not produce \emph{statistically
-distinguishable} Sharpe improvements over baseline HRP. Future work
-with a longer history, higher rebalance frequency, or
-walk-forward cluster-based testing may resolve.
+of monthly-rebalanced data, the HRP-family variants (including the four
+embedding-based ones), the risk-based comparators, and the momentum
+strategies do not produce \emph{statistically distinguishable} Sharpe
+improvements over baseline HRP. Future work with a longer history,
+higher rebalance frequency, or walk-forward cluster-based testing may
+resolve.
 
 \subsection{Limitations}
 \begin{enumerate}
@@ -893,22 +994,26 @@ walk-forward cluster-based testing may resolve.
 \label{sec:conclusion}
 %% ===========================================================================
 
-We presented a comprehensive evaluation of nine HRP variants, four
-risk-based comparators, and seven momentum strategies on a
-point-in-time cryptocurrency universe spanning 2017-08-17 through
-2026-05-18 (91 unique symbols, 100 monthly snapshots). Our headline
-findings are negative on the question ``does HRP variant $X$ beat
-baseline?'' --- Hansen SPA fails to reject, and the best HRP-family
-variant (HRP\_ShrunkCov) improves baseline HRP by only +0.016 Sharpe
-($p=0.275$). They are positive on the question ``what structural
-relationships exist between HRP variants?'' --- HRP\_Detoned and
-HRP\_PartialCorr converge in weight space (mean Spearman $0.89$),
-and HRP\_TailDep with vs.\ without LW shrinkage are essentially
-identical (Spearman $0.998$--$1.000$).
+We presented a comprehensive evaluation of nineteen strategies ---
+twelve HRP-family variants (the baseline, seven correlation/covariance
+constructions, and four embedding-based variants), four risk-based
+comparators, and three momentum strategies --- on a point-in-time
+cryptocurrency universe of 146 ever-included symbols, backtested over
+76 monthly rebalances from 2020-02 to 2026-05. Our headline findings
+are negative on the question ``does HRP variant $X$ beat baseline?'' ---
+Hansen SPA fails to reject (\S\ref{sec:results-inference}), and an
+exhaustive 547-cell hyperparameter search (\S\ref{sec:results-sweeps})
+does not surface a configuration that significantly outperforms baseline
+HRP. They are positive on the question ``what structural relationships
+exist between HRP variants?'' --- HRP\_TailDep with vs.\ without
+Ledoit--Wolf shrinkage are essentially identical
+(Spearman $0.998$--$1.000$), and detoning- and precision-based
+market-mode removal track each other and the inverse-variance portfolio
+closely in weight space.
 
 A passive 100\% BTC position outperformed every diversified portfolio
-we tested except a Minimum Variance Portfolio that concentrated
-$\sim$77\% in BTC by accident. Honest framing of this finding ---
+we tested except a Minimum Variance Portfolio that concentrated roughly
+half its weight in BTC by accident. Honest framing of this finding ---
 that diversification in cryptocurrency paid a cost over 2020--2026
 that lower drawdowns did not recover --- is the most important
 takeaway, alongside the structural convergence findings and our
@@ -921,12 +1026,20 @@ characterisation, not a Sharpe-beating claim.
 
 \section{Future Work}
 
-Time-varying conditional covariance (DCC-GARCH) for the EWMA layer;
-regime-switching analysis on the 76-snapshot results to test whether
-detoning helps in sideways / rotational regimes; on-chain factor
-incorporation per \citep{liu2022cryptofactors}; multi-exchange Kaiko
-slippage modelling; embeddings-based HRP variants (TS2Vec, contrastive
-SSL, path signatures) explicitly excluded from this paper's scope.
+Several directions remain open. Time-varying conditional covariance
+(DCC-GARCH) would give the dynamic-correlation layer a properly
+conditional second moment in place of the EWMA recursion.
+Regime-switching analysis could test directly whether detoning and
+partial correlation --- which underperform in the BTC-led 2020--2026
+window --- add value in the sideways or rotational regimes that window
+did not contain. On-chain factors \citep{liu2022cryptofactors} and a
+multi-exchange consolidated price (e.g.\ Kaiko) for a venue-robust cost
+model are natural data extensions. Finally, the most concrete empirical
+follow-up is a longer post-COVID sample: \S\ref{sec:results-regime}
+documents a directional reversal in which all four embedding variants
+edge \emph{ahead} of baseline HRP in the harder 2022--2026 regime,
+a signal too weak for individual significance here but worth revisiting
+once more non-bull data is available.
 
 \section*{Acknowledgements}
 

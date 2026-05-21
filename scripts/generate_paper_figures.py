@@ -193,7 +193,7 @@ plt.close()
 print("  cost_sensitivity_sharpe.png")
 
 # ====================================================================
-# Fig 7: detoning vs partial correlation (the 0.99 finding)
+# Fig 7: detoning vs partial correlation (weight-rank convergence)
 # ====================================================================
 print("Computing detoning vs partial-correlation Spearman across all snapshots...")
 from src.backtest import _returns_for_window
@@ -206,7 +206,9 @@ for snap in snap_dates:
     if r.shape[1] < 5: continue
     try:
         w_d = HRPDetoned(r).get_weights()
-        w_p = HRPPartialCorr(r, alpha=0.10).get_weights()
+        # default alpha=1e-3 (bug-fixed scale); alpha=0.10 collapses
+        # HRPPartialCorr into IVP.
+        w_p = HRPPartialCorr(r).get_weights()
         common = w_d.index.intersection(w_p.index)
         rho = float(w_d[common].corr(w_p[common], method="spearman"))
         rho_rows.append({"date": snap, "N": r.shape[1], "rho": rho})
@@ -217,15 +219,17 @@ rho_df.to_csv(f"{OUT}/../../data/detoned_vs_partialcorr_rho_timeseries.csv", ind
 
 fig, ax = plt.subplots(figsize=(11, 4.5))
 ax.plot(rho_df["date"], rho_df["rho"], color="tab:blue", linewidth=1.4, marker="o", markersize=3)
-ax.axhline(0.99, color="grey", linestyle=":", alpha=0.5, label="ρ=0.99 (typical)")
-ax.set_ylim(0.7, 1.01)
+ax.axhline(rho_df["rho"].median(), color="grey", linestyle=":", alpha=0.6,
+           label=f"median ρ={rho_df['rho'].median():.2f}")
+ax.set_ylim(0.4, 1.01)
 ax.set_ylabel("Spearman ρ (weight rankings)")
-ax.set_title(f"HRP_Detoned vs HRP_PartialCorr weight Spearman across {len(rho_df)} snapshots — mostly 0.99+ with regime exceptions")
+ax.set_title(f"HRP_Detoned vs HRP_PartialCorr weight Spearman across {len(rho_df)} snapshots")
 ax.grid(True, alpha=0.3); ax.legend()
 plt.tight_layout()
 plt.savefig(f"{OUT}/detoning_vs_partial_corr.png", bbox_inches="tight")
 plt.close()
-print(f"  detoning_vs_partial_corr.png  (mean ρ = {rho_df['rho'].mean():.4f}, min = {rho_df['rho'].min():.4f})")
+print(f"  detoning_vs_partial_corr.png  (mean ρ = {rho_df['rho'].mean():.4f}, "
+      f"median = {rho_df['rho'].median():.4f}, min = {rho_df['rho'].min():.4f})")
 
 # ====================================================================
 # Fig 8: shrinkage intensity timeseries
