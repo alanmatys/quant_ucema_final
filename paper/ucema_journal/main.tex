@@ -1228,6 +1228,24 @@ realised returns have been dominated by the direction of BTC.
 \item PIT universe is ranked by Binance quote volume, not market cap.
     Pro-tier CoinGecko or paid Kaiko data would enable a market-cap
     robustness check.
+\item Cross-platform reproducibility of the trained encoders. When the
+    full pipeline was re-run on independent hardware, every strategy
+    reproduced bit-identically except the two PyTorch-trained encoders,
+    HRP\textsubscript{Contrastive} and HRP\textsubscript{TS2Vec}.
+    Neural-network training is only conditionally reproducible:
+    multi-threaded BLAS reductions and platform-specific kernels make it
+    bit-identical only within a fixed software stack. We pin the two
+    encoders with single-threaded execution and
+    \texttt{torch.use\_deterministic\_algorithms}, which makes them
+    bit-identical run-to-run, and the reported figures (generated on
+    macOS~26, Apple Silicon, with Python~3.11 and PyTorch~2.12) are
+    verified by \texttt{scripts/verify\_embedding\_determinism.py}. On a
+    different operating system or processor architecture the BLAS
+    kernels differ, and the residual floating-point noise can propagate
+    through the discrete single-linkage step, moving those two Sharpes
+    by up to $\approx 0.02$ and the Ledoit--Wolf $p$-value attached to
+    them correspondingly; the headline ranking, with every embedding
+    variant at or below baseline HRP, is unaffected.
 \end{enumerate}
 
 %% ===========================================================================
