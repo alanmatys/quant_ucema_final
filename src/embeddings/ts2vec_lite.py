@@ -23,8 +23,19 @@ from torch.utils.data import Dataset, DataLoader
 
 from src.embeddings.channels import build_asset_channels
 
-# Single-threaded PyTorch (see contrastive.py for rationale).
+# Determinism + single-threaded PyTorch (see contrastive.py for the full
+# rationale): single-thread removes non-deterministic reduction order;
+# use_deterministic_algorithms pins kernel selection; warn_only=True
+# keeps a missing deterministic kernel from raising into the
+# HRPTS2Vec.get_weights() fallback.
 torch.set_num_threads(1)
+try:  # interop threads can only be set before any parallel work starts
+    torch.set_num_interop_threads(1)
+except RuntimeError:
+    pass
+torch.use_deterministic_algorithms(True, warn_only=True)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 
 class DilatedConvEncoder(nn.Module):

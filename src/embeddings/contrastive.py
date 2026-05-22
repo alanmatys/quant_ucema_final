@@ -28,10 +28,29 @@ from torch.utils.data import Dataset, DataLoader
 
 from src.embeddings.channels import build_asset_channels
 
-# Force single-threaded PyTorch ops — avoids segfaults observed under
-# pytest on macOS where PyTorch's threadpool interacts badly with the
-# test-runner's signal handlers.
+# Determinism + single-threaded PyTorch.
+#
+# set_num_threads(1) / set_num_interop_threads(1): besides avoiding the
+# segfaults observed under pytest on macOS (PyTorch's threadpool vs the
+# test-runner's signal handlers), a single thread removes the
+# non-deterministic summation order of multi-threaded BLAS/ATen
+# reductions — the dominant source of run-to-run drift in the trained
+# encoder, which propagates through single-linkage clustering into the
+# HRP weights.
+#
+# use_deterministic_algorithms pins kernel selection so a fixed PyTorch
+# build yields bit-identical encoder weights. warn_only=True degrades a
+# missing deterministic kernel to a warning rather than an exception —
+# the HRPContrastive.get_weights() fallback would otherwise swallow it
+# silently and quietly revert the strategy to plain HRP.
 torch.set_num_threads(1)
+try:  # interop threads can only be set before any parallel work starts
+    torch.set_num_interop_threads(1)
+except RuntimeError:
+    pass
+torch.use_deterministic_algorithms(True, warn_only=True)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 
 # ----------------------------------------------------------------------
