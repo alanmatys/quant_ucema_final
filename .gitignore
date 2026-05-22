@@ -17,6 +17,7 @@ venv/
 *.aux
 *.fdb_latexmk
 *.fls
+*.synctex
 *.synctex.gz
 *.toc
 *.bbl
