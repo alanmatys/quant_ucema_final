@@ -39,6 +39,7 @@ import numpy as np
 import pandas as pd
 from scipy.cluster.hierarchy import cophenet, fcluster
 from scipy.spatial.distance import squareform
+from scipy.stats import kurtosis, norm, skew
 from sklearn.metrics import adjusted_rand_score
 
 
@@ -381,6 +382,72 @@ def hansen_spa_test(
 # ----------------------------------------------------------------------
 # 4. Cluster stability diagnostics
 # ----------------------------------------------------------------------
+
+_EULER_MASCHERONI = 0.5772156649015329
+
+
+def expected_max_sharpe(trial_sharpes: np.ndarray, n_trials: int) -> float:
+    """Expected maximum Sharpe ratio under the null of zero true skill.
+
+    Bailey & Lopez de Prado (2014): with ``n_trials`` independent
+    strategy trials whose per-period Sharpe ratios have cross-sectional
+    variance ``Var(SR)``, the expected maximum Sharpe under H0 (all true
+    Sharpes zero) is
+
+        SR0 = sqrt(Var(SR)) * [ (1 - g) Z(1 - 1/N) + g Z(1 - 1/(N e)) ]
+
+    with ``g`` the Euler-Mascheroni constant and ``Z`` the inverse
+    standard-normal CDF. ``trial_sharpes`` are the per-period (not
+    annualised) Sharpe ratios of the trials.
+    """
+    n = max(int(n_trials), 2)
+    var_sr = float(np.var(np.asarray(trial_sharpes, dtype=float), ddof=1))
+    g = _EULER_MASCHERONI
+    return float(np.sqrt(var_sr) * (
+        (1.0 - g) * norm.ppf(1.0 - 1.0 / n)
+        + g * norm.ppf(1.0 - 1.0 / (n * np.e))))
+
+
+def deflated_sharpe_ratio(
+    returns: np.ndarray,
+    trial_sharpes: np.ndarray,
+    n_trials: int,
+) -> dict:
+    """Deflated Sharpe Ratio (Bailey & Lopez de Prado 2014).
+
+    The DSR is the Probabilistic Sharpe Ratio of a strategy measured
+    against the *deflated* benchmark ``SR0`` --- the expected maximum
+    Sharpe a search over ``n_trials`` strategies would produce under the
+    null of zero skill --- rather than against zero. It simultaneously
+    corrects for selection across many trials, the non-normality (skew,
+    kurtosis) of the return series, and the sample length. ``DSR`` is the
+    probability that the strategy's true Sharpe exceeds ``SR0``; a value
+    above 0.95 indicates a Sharpe that survives the multiple-testing and
+    non-normality corrections.
+
+    Args:
+        returns: the selected strategy's per-period (e.g. daily) returns.
+        trial_sharpes: per-period Sharpe ratios of all ``n_trials``
+            strategies in the search (for the cross-trial variance).
+        n_trials: number of strategy trials the best was selected from.
+
+    Returns:
+        dict with sr_hat, sr0 (both per-period), dsr, skew, kurtosis,
+        n_obs, n_trials.
+    """
+    r = np.asarray(returns, dtype=float)
+    r = r[np.isfinite(r)]
+    n = len(r)
+    sd = float(np.std(r, ddof=1))
+    sr = float(np.mean(r) / sd) if sd > 0 else 0.0           # per-period
+    g3 = float(skew(r))
+    g4 = float(kurtosis(r, fisher=False))                     # non-excess
+    sr0 = expected_max_sharpe(trial_sharpes, n_trials)
+    denom = np.sqrt(max(1.0 - g3 * sr + (g4 - 1.0) / 4.0 * sr ** 2, 1e-12))
+    dsr = float(norm.cdf((sr - sr0) * np.sqrt(n - 1) / denom)) if n > 1 else 0.0
+    return {"sr_hat": sr, "sr0": sr0, "dsr": dsr, "skew": g3,
+            "kurtosis": g4, "n_obs": n, "n_trials": int(n_trials)}
+
 
 def cophenetic_correlation(
     distance_matrix: np.ndarray | pd.DataFrame,
