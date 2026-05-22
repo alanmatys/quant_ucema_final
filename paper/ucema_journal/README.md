@@ -15,34 +15,41 @@ pdflatex main && bibtex main && pdflatex main && pdflatex main
 ```
 
 ## Files
-- `main.tex` — single-file paper draft, ~25-30 pages
-- `references.bib` — 25 cited works
+- `main.tex` — single-file paper draft, ~23 pages
+- `references.bib` — 31 references
 - Figures: `../figures/*.png` (built by `scripts/generate_paper_figures.py`)
 
 ## Result tables
 All numbers in §6 (Results) trace to committed CSVs in `data/`:
-- `backtest_v2_rebalance_results.csv` — 23-row Scenario B table
-  (22 constructed strategies including baseline HRP and the return-tilted
-  NCO candidate, plus the passive `HODL_BTC` benchmark)
+- `backtest_v2_rebalance_results.csv` — 26-row Scenario B table
+  (25 constructed strategies including baseline HRP, plus the passive
+  `HODL_BTC` benchmark)
 - `backtest_v2_static_results.csv` — Scenario A
 - `backtest_v2_threshold_results.csv` — Scenarios B/C/C′
 - `backtest_v2_cost_sensitivity.csv` — cost grid
+- `backtest_v2_post_covid_results.csv` — post-COVID regime cut
+- `backtest_v2_weekly_results.csv` — weekly-cadence robustness check
 - `cluster_stability.csv` — 76-snapshot cophenetic + ARI
 - `detoned_vs_partialcorr_rho_timeseries.csv` — convergence finding
+- `power_analysis.csv` — detectable Sharpe edge at 80% power
+- `deflated_sharpe.csv` — Deflated Sharpe Ratio
 - `inference_*.csv` — bootstrap CIs, LW Sharpe diff, Hansen SPA
 - `hrp_shrunkcov_intensity.csv` — LW α time series
 
 ## Reproducing the figures
 ```bash
-PYTHONPATH=. venv/bin/python scripts/generate_paper_figures.py
+uv run python scripts/generate_paper_figures.py
 ```
 
 ## Reproducing the backtest
 ```bash
-PYTHONPATH=. venv/bin/python -m pytest tests/  # 89 tests must pass
-PYTHONPATH=. venv/bin/python scripts/build_pit_universe_final.py
-PYTHONPATH=. venv/bin/python scripts/rerun_all.py
-PYTHONPATH=. venv/bin/python scripts/add_nco_rt.py
+uv run pytest -q                                  # 96 tests must pass
+uv run python scripts/build_pit_universe_final.py
+uv run python scripts/rerun_all.py                # 21-strategy main roster
+uv run python scripts/add_denoised.py             # + HRP_Denoised
+uv run python scripts/add_nco_rt.py               # + return-tilted NCO
+uv run python scripts/add_crisp.py                # + CRISP
+uv run python scripts/add_ncocrisp.py             # + NCO-CRISP
 ```
 
 Inference is computed on the common aligned daily-return panel after all

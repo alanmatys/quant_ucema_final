@@ -2,10 +2,10 @@
 
 A continuation of the MACI 2025 paper *"Hierarchical Risk Parity for
 Cryptocurrency Portfolios: A Comparative Analysis"*. The final committed
-comparison set contains **23 constructed strategies** — thirteen
-HRP-family variants (including four embedding-based ones), four
-risk-based comparators, three nested-clustering optimisers (HERC, NCO,
-return-tilted NCO), and three crypto-momentum strategies — plus the
+comparison set contains **25 constructed strategies** — thirteen
+HRP-family variants (including four embedding-based ones), five
+risk-based comparators, four nested-clustering optimisers (HERC, NCO,
+return-tilted NCO, NCO-CRISP), and three crypto-momentum strategies — plus the
 passive `HODL_BTC` benchmark, on a **survivorship-bias-corrected,
 point-in-time Binance universe**, with Ledoit–Wolf and Hansen SPA
 inference wrapped around every comparison.
@@ -67,7 +67,7 @@ Every script resolves the repo root from its own location, so it can be
 run from any working directory.
 
 ```bash
-# Test suite (89 tests)
+# Test suite (96 tests)
 uv run pytest -q
 
 # Main full re-run: headline panel, scenarios, and inference for the
@@ -75,10 +75,12 @@ uv run pytest -q
 # neural encoders at every rebalance)
 uv run python scripts/rerun_all.py
 
-# Append the extra candidates (HRP_Denoised, return-tilted NCO) and
-# refresh inference/results
+# Append the extra candidates (HRP_Denoised, return-tilted NCO, CRISP,
+# NCO-CRISP) and refresh inference/results
 uv run python scripts/add_denoised.py
 uv run python scripts/add_nco_rt.py
+uv run python scripts/add_crisp.py
+uv run python scripts/add_ncocrisp.py
 
 # Rebuild the final committed PIT universe artifact from committed CSV inputs
 uv run python scripts/build_pit_universe_final.py

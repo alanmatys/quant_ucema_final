@@ -351,7 +351,8 @@ embedding number reflects the embedding pipeline itself.
 squared deviations from equal risk contributions), \textbf{Maximum
 Diversification} \citep{choueifaty2008maxdiv} (SLSQP maximisation of
 the diversification ratio), and \textbf{CRISP} (Correlation-Regularised
-Iterative Shrinkage Portfolio; \citealp{wuebben2026crisp}). CRISP solves
+Iterative Shrinkage Portfolio; \citealp{wuebben2026crisp}, a recent
+preprint). CRISP solves
 the linear system $P_\gamma w = \mathbf{1}$ with
 $P_\gamma = (1-\gamma)\,\mathrm{diag}(\Sigma) + \gamma\,\Sigma$, a
 variance-preserving shrinkage that keeps the asset variances exact and
@@ -552,7 +553,9 @@ above its Sharpe rank.
 rebalances over 2020-02 to 2026-05, expanded 146-symbol PIT universe).
 Sharpe is the annualised arithmetic ratio (mean / standard deviation
 $\times\sqrt{365}$); Sortino and Calmar are annualised; Max DD is the
-peak-to-trough drawdown. ``LW $p$'' is the studentized Ledoit--Wolf
+peak-to-trough drawdown. All ratios use raw returns with the
+risk-free rate set to zero, the standard convention for crypto Sharpe
+ratios. ``LW $p$'' is the studentized Ledoit--Wolf
 Sharpe-difference test vs.\ baseline HRP (bold: $p<0.05$). HODL\_BTC is
 a passive benchmark, not a strategy.}
 \label{tab:scenarioB}
@@ -647,9 +650,9 @@ opposite: momentum-driven maximum-Sharpe steps make it a
 164\%-turnover momentum-chaser that loses 97\% of capital, an
 illustration of the estimation-error amplification that risk-based
 allocation is designed to avoid. The hybrid is itself informative: it lands \emph{between} its two parents (NCO 0.933, CRISP 0.989), so
-the correlation-shrinkage and the hierarchical nesting act as
-substitutes, not complements: the shrinkage carries the edge, the
-hierarchy adds nothing on top of it. Changing the clustering step
+the correlation-shrinkage solve and the hierarchical nesting do not
+stack: the shrinkage carries the edge, and the nesting adds nothing
+measurable on top of it. Changing the clustering step
 produced no detectable outperformance over baseline HRP; changing the
 allocation step moved performance materially, in both directions.
 
@@ -773,9 +776,11 @@ portfolio, the noisier the paired Sharpe difference and the higher the
 threshold. The heavily-concentrated MVP ($N\approx3$) needs
 $\approx0.47$ and NCO ($N\approx5$) $\approx0.42$, so their observed
 $+0.31$ and $+0.19$ edges, though economically large, fall short. The
-more moderate CRISP and NCO\_CRISP ($N\approx7$--$9$) have thresholds
-near $\approx0.28$, which is why their $\approx+0.24$ edges \emph{do}
-clear pairwise significance while MVP's larger edge does not.
+more moderate concentration of CRISP and NCO\_CRISP ($N\approx7$--$9$)
+places their detectable-edge threshold between NCO's $0.42$ and the
+tightly-coupled HRP family's $0.04$--$0.12$ band, low enough that their
+$\approx+0.24$ edges \emph{do} clear pairwise significance while MVP's
+larger but noisier edge does not.
 \textbf{The pairwise null is therefore a statement about detectable
 effect size given concentration; it is the multiple-testing-corrected
 SPA, not the per-strategy power, that ultimately declines to reject.}
@@ -890,8 +895,8 @@ $\sim$76 rebalance dates.
 
 \paragraph{Combined Hansen SPA.} Pooling all 547 configurations into a
 single Hansen SPA against baseline HRP, the appropriate correction for
-having searched the entire grid, yields $p_{\text{consistent}}=0.91$
-($p_{\text{lower}}=0.73$, $p_{\text{upper}}=0.91$). Although 21 of 547
+having searched the entire grid, yields $p_{\text{consistent}}=0.906$
+($p_{\text{lower}}=0.733$, $p_{\text{upper}}=0.909$). Although 21 of 547
 cells show a nominally positive mean excess return over HRP, the best of them
 (HRP\_ShrunkCov, $\Delta=+0.024$) carries a pairwise Ledoit--Wolf $p$ of
 $0.16$. \textbf{After correcting for the multiple testing of 547
@@ -941,14 +946,16 @@ CRISP and the NCO--CRISP hybrid all stay positive or near-flat
 post-COVID (Sharpe $0.26$--$0.37$, total return $-4\%$ to $+20\%$)
 against baseline HRP's $-60\%$, and CRISP and NCO\_CRISP remain
 pairwise-significant against HRP in the post-COVID window as well
-(Ledoit--Wolf $p=0.017$ and $0.022$). Whatever these allocators are
+(Ledoit--Wolf $p=0.017$ and $0.022$). The post-COVID Hansen SPA, like
+the full-window test, does not reject ($p_{\text{consistent}}=0.38$).
+Whatever these allocators are
 doing (concentrating into low-volatility assets via
 correlation-shrinkage or nested minimum variance) helps in
 \emph{both} regimes, not only the rally. They are the paper's evidence
 that an \emph{allocation} choice, rather than luck, separates a
 constructed portfolio from the HRP pack; that the multiple-testing
 corrected SPA still does not confirm it (\S\ref{sec:results-inference})
-leaves the effect strongly suggested but not established.
+leaves the effect well-supported in the data but short of confirmed.
 
 \textbf{(3) Embedding variants partially reverse against baseline HRP
 in the harder regime.} In the full window all four embedding variants
@@ -1050,7 +1057,8 @@ family rises most (RM\_MOM $0.66\to0.92$, CS\_MOM $0.66\to0.91$),
 consistent with momentum's short crypto half-life: monthly rebalancing
 was simply too slow for it. Second, and despite the $\sim$4$\times$
 larger rebalance count, the inference does \emph{not} sharpen: the
-weekly Hansen SPA still gives $p_{\text{consistent}}=0.57$ and the
+weekly Hansen SPA still gives $p_{\text{consistent}}=0.57$ (corrected
+over the smaller, embedding-free weekly candidate set) and the
 bootstrap Sharpe CIs stay $\sim$1.5 wide. More rebalances do not help
 when the per-period return volatility is what dominates the standard
 error. Higher cadence changes the \emph{ranking texture} (momentum
@@ -1183,8 +1191,8 @@ both the full and the post-COVID windows, yet the Hansen SPA
 ($p_{\text{consistent}}=0.41$) does not reject. This is not a
 contradiction; it is the multiple-testing correction working as
 intended. The pairwise test asks ``does \emph{this} strategy beat
-HRP?''; the SPA asks ``does \emph{the best of 24 searched strategies}
-beat HRP, given that we searched 24?'', and inflates the critical
+HRP?''; the SPA asks ``does \emph{the best of 25 searched strategies}
+beat HRP, given that we searched 25?'', and inflates the critical
 value accordingly. CRISP's and NCO--CRISP's edges clear the first bar
 and not the second. The honest reading is therefore specific: the two
 shrinkage allocators show a real, regime-robust pairwise edge, but it
