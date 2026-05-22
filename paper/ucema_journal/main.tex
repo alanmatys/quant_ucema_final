@@ -34,42 +34,44 @@
 We extend the MACI 2025 study of Hierarchical Risk Parity (HRP) for
 cryptocurrency portfolios. We close the two future-work items of that
 paper, Marchenko--Pastur denoising and spectral detoning, and broaden
-the comparison to 23 constructed portfolio strategies: thirteen
+the comparison to 25 constructed portfolio strategies: thirteen
 HRP-family variants (the baseline, eight correlation/covariance
 constructions, and four embedding-based variants that learn the
 clustering distance from path signatures, a graph embedding and two
-contrastive sequence encoders); four risk-based comparators (IVP, MVP,
-ERC, Maximum Diversification); three nested-clustering optimisers (HERC,
-NCO and a return-tilted NCO); and three crypto-momentum strategies.
-Every comparison runs on a survivorship-bias-corrected, point-in-time
-Binance universe (146 ever-included symbols, delisted assets such as
-LUNA and FTT included) and is wrapped in the reference Hansen Superior
-Predictive Ability test and a studentized Ledoit--Wolf Sharpe-difference
-test.
+contrastive sequence encoders); five risk-based comparators (IVP, MVP,
+ERC, Maximum Diversification, and the CRISP correlation-shrinkage
+portfolio); four nested-clustering optimisers (HERC, NCO, a
+return-tilted NCO, and an NCO--CRISP hybrid); and three crypto-momentum
+strategies. Every comparison runs on a survivorship-bias-corrected,
+point-in-time Binance universe (146 ever-included symbols, delisted
+assets such as LUNA and FTT included) and is wrapped in the reference
+Hansen Superior Predictive Ability test and a studentized Ledoit--Wolf
+Sharpe-difference test.
 On 76 monthly rebalances over 2020-02 to 2026-05 the thirteen HRP-family
 variants lie within a narrow annualised-Sharpe band (0.70--0.75): across
 an exhaustive 547-cell hyperparameter grid, no correlation, distance,
 linkage or embedding choice separates from baseline HRP (combined Hansen
-SPA $p_{\text{consistent}}=0.91$). The one exception is \emph{Nested
-Clustered Optimization}, which re-optimises the allocation within and
-across clusters rather than only re-drawing the dendrogram: NCO reaches
-Sharpe 0.93, a $+0.19$ edge over HRP that also holds in the post-COVID
-sub-sample, though even this is not statistically significant
-(Ledoit--Wolf $p=0.22$; headline SPA $p_{\text{consistent}}=0.41$).
-A power analysis explains the gap: on this 6.3-year sample a
-structurally distinct strategy must beat HRP by $\approx 0.4$--$0.8$
-annualised Sharpe to be detected at 80\% power, so NCO's positive but
-statistically unresolved edge remains uncertified. Tilting NCO toward an
-estimated-return objective instead destroys it ($-97\%$ total return),
-an illustration of the estimation-error amplification that motivates
-risk-based allocation. A passive 100\% BTC hold (Sharpe 0.87) still
-beats every diversified strategy except MVP and NCO, both of which win
-by concentrating in BTC; in the post-COVID regime every diversified HRP
-variant loses 51--64\% of capital while BTC gains. We retract an earlier
-cluster-stability claim that a 76-snapshot re-analysis falsifies
-(Pearson ARI wins 69\% of month-pairs). The paper maps which HRP design
-choices affect performance and which do not: the allocation step
-matters, the clustering step does not.
+SPA $p_{\text{consistent}}=0.91$). Performance moves only when the
+\emph{allocation} step changes. Four risk-based allocators reach Sharpe
+0.93--1.06 --- MVP, the CRISP correlation-shrinkage portfolio, an
+NCO--CRISP hybrid, and NCO --- and CRISP and NCO--CRISP beat baseline HRP
+at the pairwise level in both the full and post-COVID windows
+(Ledoit--Wolf $p\approx0.01$). But the Hansen SPA, correcting for the
+24-candidate search, does not reject the null
+($p_{\text{consistent}}=0.41$): no edge survives the multiple-testing
+correction. A power analysis explains the gap: the detectable Sharpe
+edge scales with concentration, and these allocators' edges sit close to
+their detection thresholds. Tilting an allocator toward an
+estimated-return objective instead destroys it (return-tilted NCO,
+$-97\%$ total return), an illustration of the estimation-error
+amplification that motivates risk-based allocation. A passive 100\% BTC
+hold (Sharpe 0.87) still beats every diversified strategy except the
+BTC-concentrating risk allocators; in the post-COVID regime every
+diversified HRP variant loses 51--64\% of capital while BTC gains. We
+retract an earlier cluster-stability claim that a 76-snapshot
+re-analysis falsifies (Pearson ARI wins 69\% of month-pairs). The paper
+maps which HRP design choices affect performance and which do not: the
+allocation step matters, the clustering step does not.
 \end{abstract}
 
 \paragraph{Keywords.} Hierarchical Risk Parity, cryptocurrency, denoising,
@@ -105,14 +107,16 @@ the comparison in three other directions.
       variants} that learn the HRP clustering distance from a representation
       of each asset's return path (level-3 path signatures, a node2vec graph
       embedding, and two contrastive sequence encoders; \S\ref{sec:methods-emb}).
-      We also add three strategies that change the \emph{allocation} step
+      We also add four strategies that change the \emph{allocation} step
       rather than the dendrogram: Hierarchical Equal Risk Contribution
       \citep{raffinot2018herc}, Nested Clustered Optimization
-      \citep{lopezdeprado2019nco}, and a return-tilted NCO
-      (\S\ref{sec:methods-comparators}); these test whether the clustering
-      step or the allocation step drives performance. ERC
-      \citep{maillard2010erc} and Maximum Diversification
-      \citep{choueifaty2008maxdiv} serve as risk-based comparators.
+      \citep{lopezdeprado2019nco}, a return-tilted NCO, and an NCO--CRISP
+      hybrid (\S\ref{sec:methods-comparators}); these test whether the
+      clustering step or the allocation step drives performance. ERC
+      \citep{maillard2010erc}, Maximum Diversification
+      \citep{choueifaty2008maxdiv} and CRISP \citep{wuebben2026crisp},
+      a recent correlation-shrinkage portfolio, serve as risk-based
+      comparators.
 \item \textbf{Crypto-momentum strategies.} Cross-sectional momentum,
       risk-managed momentum \citep{barroso2015momentum}, and a
       Momentum$+$HRP hybrid, parameter-tuned for crypto's faster
@@ -162,7 +166,14 @@ and propose tail-dependence distances \citep{lohre2020tailhrp} for
 multi-asset multi-factor allocations. Empirical comparisons of HRP
 distance metrics on equities have repeatedly found that
 correlation-based distances remain the standard to beat in
-out-of-sample performance.
+out-of-sample performance. A concurrent line of work makes the
+hierarchical allocator \emph{signal-aware}: \citet{wuebben2026crisp}
+extends HRP to accept an arbitrary return forecast and introduces
+CRISP, a correlation-shrinkage solver that interpolates between an
+inverse-variance rule and full mean-variance optimisation; its
+evaluation is by Monte Carlo. We adopt CRISP here as a comparator and,
+in \S\ref{sec:results-regime}, contrast that simulation evidence with
+live-market behaviour.
 
 \subsection{Risk-based and network methods}
 Equal Risk Contribution \citep{maillard2010erc} solves for weights such
@@ -336,14 +347,24 @@ embedding number reflects the embedding pipeline itself.
 \paragraph{Risk-based comparators.}
 \textbf{IVP} (inverse-variance), \textbf{MVP} (minimum-variance via SLSQP),
 \textbf{ERC} \citep{maillard2010erc} (solved by SLSQP minimisation of
-squared deviations from equal risk contributions), and \textbf{Maximum
+squared deviations from equal risk contributions), \textbf{Maximum
 Diversification} \citep{choueifaty2008maxdiv} (SLSQP maximisation of
-the diversification ratio).
+the diversification ratio), and \textbf{CRISP} (Correlation-Regularised
+Iterative Shrinkage Portfolio; \citealp{wuebben2026crisp}). CRISP solves
+the linear system $P_\gamma w = \mathbf{1}$ with
+$P_\gamma = (1-\gamma)\,\mathrm{diag}(\Sigma) + \gamma\,\Sigma$ --- a
+variance-preserving shrinkage that keeps the asset variances exact and
+multiplies the off-diagonal covariances by $\gamma$. The factor
+$\gamma$ interpolates between inverse variance ($\gamma=0$) and a full
+minimum-variance solve ($\gamma=1$); we use the signal-free form
+($\mu=\mathbf{1}$) and fix $\gamma=0.5$ rather than tuning it
+out-of-sample. Long-only weights are obtained by projecting the
+solution onto the simplex.
 
 \paragraph{Nested-clustering optimisers.} HRP and all its variants change
 only the \emph{dendrogram}; the within-cluster allocation stays inverse-
 variance recursive bisection. To isolate whether the clustering step or
-the allocation step drives performance, we add three strategies that
+the allocation step drives performance, we add four strategies that
 keep hierarchical clustering but \emph{re-optimise the allocation}.
 \textbf{HERC} (Hierarchical Equal Risk Contribution; \citealp{raffinot2018herc})
 cuts the dendrogram into $K=\lceil\sqrt{N}\rceil$ clusters, weights assets
@@ -358,7 +379,12 @@ suppresses the estimation-error amplification of a direct optimiser.
 \textbf{Return-tilted NCO} replaces NCO's two minimum-variance steps with
 long-only \emph{maximum-Sharpe} steps driven by a shrunk 63-day momentum
 estimate, a deliberate test of whether making the allocation
-return-aware helps.
+return-aware helps. \textbf{NCO\_CRISP} instead replaces each of NCO's
+minimum-variance solves with a CRISP solve on the corresponding block
+covariance: the hierarchy isolates the most strongly-correlated --- and
+hence most near-singular --- covariance blocks, and the CRISP shrinkage
+regularises the optimisation inside them. It is the natural hybrid of
+the paper's two best ideas, and reduces exactly to NCO at $\gamma=1$.
 
 \subsection{Momentum strategies}
 \label{sec:methods-mom}
@@ -527,6 +553,8 @@ baseline HRP. HODL\_BTC is a passive benchmark, not a strategy.}
 Strategy & Arith. Sharpe & Total Return & Avg Turnover & LW $p$ vs HRP\\
 \midrule
 \textbf{MVP}             & \textbf{1.057} & \textbf{+2867\%} & 0.38 & 0.059\\
+\textbf{CRISP}           & \textbf{0.989} & \textbf{+1693\%} & 0.30 & \textbf{0.012}\\
+\textbf{NCO\_CRISP}      & \textbf{0.977} & \textbf{+1613\%} & 0.45 & \textbf{0.011}\\
 \textbf{NCO}             & \textbf{0.933} & \textbf{+1503\%} & 0.58 & 0.218\\
 \textit{HODL\_BTC}       & \textit{0.868} & \textit{+749\%}  & ---  & 0.606\\
 HRP\_Dynamic\_94         & 0.749 & +442\%  & 0.47 & 0.823\\
@@ -554,16 +582,20 @@ NCO\_RT                  & 0.003 & --97\%  & 1.64 & \textbf{0.009}\\
 \end{tabular}
 \end{table}
 
-\paragraph{No strategy significantly beats HRP; one is significantly
-worse.} Under the studentized Ledoit--Wolf test, no strategy is
-significantly \emph{better} than baseline HRP, including NCO ($+0.19$
-Sharpe, $p=0.22$) and MVP ($+0.31$, $p=0.06$). The only result that
-crosses $p<0.05$ is the return-tilted NCO, significantly \emph{worse}
-($-0.74$ Sharpe, $p=0.009$); ERC sits on the threshold ($-0.078$,
-$p=0.051$). With the bug-fixed HRP\_PartialCorr ($\alpha=10^{-3}$,
-\S\ref{sec:methods-cov}) the strategy is now distinct from IVP; it was
-byte-identical to IVP in an earlier draft (Sharpe 0.697), and corrected
-it sits at 0.720.
+\paragraph{Pairwise significance.} Under the studentized Ledoit--Wolf
+test, two strategies beat baseline HRP at $p<0.05$: the CRISP
+correlation-shrinkage portfolio ($+0.25$ Sharpe, $p=0.012$) and the
+NCO--CRISP hybrid ($+0.24$, $p=0.011$). MVP's larger raw edge ($+0.31$)
+does not cross the threshold ($p=0.059$); its heavier concentration
+makes the paired Sharpe difference noisier. NCO ($+0.19$, $p=0.22$) is
+well short. In the other direction the return-tilted NCO is
+significantly \emph{worse} ($-0.74$ Sharpe, $p=0.009$) and ERC sits on
+the threshold ($-0.078$, $p=0.051$). These pairwise tests do not correct
+for the 24-candidate search; the Hansen SPA, which does, is reported in
+\S\ref{sec:results-inference} and does not reject. With the bug-fixed
+HRP\_PartialCorr ($\alpha=10^{-3}$, \S\ref{sec:methods-cov}) the strategy
+is now distinct from IVP; it was byte-identical to IVP in an earlier
+draft (Sharpe 0.697), and corrected it sits at 0.720.
 
 \begin{figure}[H]
   \centering
@@ -576,7 +608,7 @@ it sits at 0.720.
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.95\textwidth]{../figures/risk_return_scatter.png}
-  \caption{Risk-return scatter for the full 23-strategy comparison.
+  \caption{Risk-return scatter for the full 25-strategy comparison.
   Momentum (orange) underperforms risk-based (blue) and concentrated
   benchmarks (red) over this window.}
   \label{fig:risk_return}
@@ -590,26 +622,29 @@ Sharpe respectively); the differences are small and, per
 correlation estimator, distance function, linkage or embedding moves a
 variant out of this band.
 
-\paragraph{Nested-clustering optimisation: NCO is the one real
-contender.} The three nested-clustering optimisers separate clearly.
-HERC (0.712) sits \emph{inside} the HRP-family band; swapping recursive
-bisection for an explicit cluster cut plus an equal-risk-contribution
-allocation changes little. NCO is different: at Sharpe \textbf{0.933} it
-is the second-best strategy in the table, a $+0.19$ edge over baseline
-HRP and far outside the HRP-family band. The mechanism is informative.
-NCO's nested minimum-variance steps concentrate weight toward
-low-volatility assets (average maximum weight 0.42, effective
-$N\approx5$ against HRP's $\approx30$), and in a BTC-led market that
-means tilting into BTC; NCO is, in effect, a denoised, less-extreme
-cousin of MVP. The return-tilted NCO is the cautionary opposite:
-replacing the minimum-variance steps with momentum-driven maximum-Sharpe
-steps turns it into a 164\%-turnover momentum-chaser that loses 97\% of
-capital, an illustration of the estimation-error amplification that
-risk-based allocation is designed to avoid. Within this dataset,
-horizon and search space, changing the clustering step produced no
-detectable outperformance over baseline HRP, whereas changing the
-allocation step changed performance materially, both upward (NCO) and
-downward (return-tilted NCO).
+\paragraph{The allocation step: NCO, CRISP and the NCO--CRISP hybrid.}
+The strategies that change the \emph{allocation} step, rather than the
+dendrogram, separate from the HRP family. HERC (0.712) is the
+exception: it keeps an inverse-variance allocation and stays inside the
+HRP band. The rest move. NCO --- nested minimum variance within and
+across clusters --- reaches Sharpe 0.933; CRISP, a non-hierarchical
+correlation-shrinkage solve (\S\ref{sec:methods-comparators}), reaches
+0.989; and the NCO--CRISP hybrid 0.977, with CRISP and the hybrid the
+only strategies that beat HRP at the pairwise level
+(\S\ref{sec:results-inference}). All three concentrate toward
+low-volatility assets (effective $N$ of 5--9 against HRP's
+$\approx30$), tilting into BTC in a BTC-led market; they are denoised,
+less-extreme cousins of MVP. The return-tilted NCO is the cautionary
+opposite: momentum-driven maximum-Sharpe steps make it a
+164\%-turnover momentum-chaser that loses 97\% of capital, an
+illustration of the estimation-error amplification that risk-based
+allocation is designed to avoid. The hybrid is itself informative ---
+it lands \emph{between} its two parents (NCO 0.933, CRISP 0.989), so
+the correlation-shrinkage and the hierarchical nesting act as
+substitutes, not complements: the shrinkage carries the edge, the
+hierarchy adds nothing on top of it. Changing the clustering step
+produced no detectable outperformance over baseline HRP; changing the
+allocation step moved performance materially, in both directions.
 
 \paragraph{Embedding variants.} The four embedding-based HRP variants
 are \texttt{HRP\_PathSig} (path signatures; \citealp{lyons1998}),
@@ -653,16 +688,17 @@ better than either pure-momentum strategy: running HRP allocation
 risk-adjusted performance, though it still trails baseline HRP and
 reconstructs its entire book every month.
 
-\paragraph{Concentration wins.} The top three lines of the table,
-MVP (1.057), NCO (0.933) and a passive HODL\_BTC position (0.868),
-are all the same bet at bottom: concentrate in BTC. MVP does it most
-aggressively (average maximum weight 50\%, effective $N\approx3$), NCO
-through its nested minimum-variance steps ($N\approx5$), HODL\_BTC by
-definition. BTC ran from $\sim$\$7k at the start of 2020 to
-$\sim$\$107k by mid-2026, so concentration paid. We do not read this as
-a portfolio-construction insight: it is a directional view on one asset
-in one regime. The post-COVID cut (\S\ref{sec:results-regime}) shows
-how fragile that is.
+\paragraph{Concentration wins.} The five strategies above baseline HRP
+--- MVP (1.057), CRISP (0.989), NCO\_CRISP (0.977), NCO (0.933) and a
+passive HODL\_BTC position (0.868) --- are all, at bottom, the same bet:
+concentrate in BTC. MVP does it most aggressively (average maximum
+weight 50\%, effective $N\approx3$); CRISP, NCO\_CRISP and NCO do it
+more mildly through correlation-shrinkage and nested minimum variance
+(effective $N$ of 5--9); HODL\_BTC by definition. BTC ran from
+$\sim$\$7k at the start of 2020 to $\sim$\$107k by mid-2026, so
+concentration paid. We do not read this as a portfolio-construction
+insight: it is a directional view on one asset in one regime. The
+post-COVID cut (\S\ref{sec:results-regime}) shows how fragile that is.
 
 \subsection{Inference results}
 \label{sec:results-inference}
@@ -677,23 +713,28 @@ HRP-family variant's interval straddles it; no two strategies have
 non-overlapping CIs.
 
 \paragraph{Pairwise LW Sharpe differences vs.\ HRP.}
-Under the studentized Ledoit--Wolf test, \emph{no} strategy is
-significantly better than baseline HRP. The two largest positive gaps
-fall short: MVP ($+0.314$, $p=0.059$) and NCO ($+0.192$, $p=0.218$).
-The only candidate that crosses $p<0.05$ is the return-tilted NCO,
-significantly \emph{worse} ($-0.74$, $p=0.009$); ERC ($-0.078$,
-$p=0.051$) sits on the threshold. The largest edge in the table,
-NCO's $+0.19$ Sharpe, is statistically indistinguishable from noise.
+Under the studentized Ledoit--Wolf test, two strategies beat baseline
+HRP at $p<0.05$: CRISP ($+0.247$ Sharpe, $p=0.012$) and the NCO--CRISP
+hybrid ($+0.239$, $p=0.011$). MVP's larger raw edge ($+0.314$) falls
+just short ($p=0.059$) because its heavier concentration inflates the
+variance of the paired Sharpe difference; NCO ($+0.192$, $p=0.218$) is
+well short. In the other direction the return-tilted NCO is
+significantly \emph{worse} ($-0.74$, $p=0.009$) and ERC ($-0.078$,
+$p=0.051$) sits on the threshold. These are uncorrected pairwise tests;
+the multiple-testing correction follows.
 
-\paragraph{Hansen SPA.} Across the 22 candidates versus baseline HRP,
+\paragraph{Hansen SPA.} Across the 24 candidates versus baseline HRP,
 $p_{\text{consistent}} = 0.41$ ($p_{\text{lower}}=0.27$,
 $p_{\text{upper}}=0.54$; Figure~\ref{fig:spa}), computed with the
 reference \texttt{arch} implementation. \textbf{We cannot reject the
 null that no strategy outperforms baseline HRP after correcting for the
-multiple testing of 22 candidates.} MVP carries the highest studentised
-score ($+1.20$), NCO the second ($+0.77$); every remaining candidate,
-the embedding variants and the rest of the HRP family included, is
-at or below zero.
+multiple testing of 24 candidates} --- and this is the decisive test:
+the SPA is exactly the correction the pairwise LW results lack.
+NCO\_CRISP carries the highest studentised score ($+1.64$), CRISP the
+second ($+1.32$), then MVP ($+1.20$); but the bootstrap critical value,
+inflated by the 24-candidate search, sits above all of them. CRISP's
+and NCO\_CRISP's pairwise significance therefore does not survive the
+correction for how many strategies were tried.
 
 \begin{figure}[H]
   \centering
@@ -717,13 +758,18 @@ of the Sharpe difference. For variants that barely depart from HRP
 difference is low-variance and the test detects edges as small as
 $0.04$--$0.12$ Sharpe, but those variants have edges of only $\pm0.01$
 to $\pm0.04$ anyway. For strategies whose \emph{allocation} departs
-substantively from HRP (NCO, MVP, the momentum family, HODL\_BTC) the
-minimum detectable edge is $0.35$--$0.79$ Sharpe. NCO's observed
-$+0.19$ and MVP's $+0.31$, though economically large, fall below their
-$\approx0.42$ and $\approx0.47$ detection thresholds. \textbf{The null
-result is therefore a statement about detectable effect size: on a
-6.3-year crypto sample this design cannot resolve a Sharpe edge below
-$\approx0.4$, not evidence that no edge exists.}
+substantively from HRP the minimum detectable edge is larger, and it
+scales with how far the strategy departs: the more concentrated the
+portfolio, the noisier the paired Sharpe difference and the higher the
+threshold. The heavily-concentrated MVP ($N\approx3$) needs
+$\approx0.47$ and NCO ($N\approx5$) $\approx0.42$, so their observed
+$+0.31$ and $+0.19$ edges, though economically large, fall short. The
+more moderate CRISP and NCO\_CRISP ($N\approx7$--$9$) have thresholds
+near $\approx0.28$, which is why their $\approx+0.24$ edges \emph{do}
+clear pairwise significance while MVP's larger edge does not.
+\textbf{The pairwise null is therefore a statement about detectable
+effect size given concentration; it is the multiple-testing-corrected
+SPA, not the per-strategy power, that ultimately declines to reject.}
 
 \subsection{Hyperparameter sweeps and the combined SPA}
 \label{sec:results-sweeps}
@@ -836,20 +882,21 @@ The 2020--2026 headline window includes the COVID-era crypto rally
 $\sim$\$5k to $\sim$\$69k, one of the most extreme bull markets
 in crypto history. To check whether the $\S$\ref{sec:results}
 conclusions are dominated by that single rally, we re-ran the entire
-23-strategy backtest with $\mathrm{start}=$ \texttt{2022-01-01}
+25-strategy backtest with $\mathrm{start}=$ \texttt{2022-01-01}
 (52 monthly rebalances over $\sim$4.3 years). All other parameters
 identical.
 
 \textbf{The picture flips entirely.} On post-COVID data, baseline
 HRP achieves Sharpe $0.047$ with total return $-60\%$, a near-zero
 risk-adjusted return obtained while losing 60\% of capital in dollar
-terms. Only three lines of the table make money: the passive HODL\_BTC
-benchmark ($+106\%$, Sharpe $0.585$), MVP ($+66\%$, $0.482$), and NCO,
-which essentially breaks even ($-4\%$, Sharpe $0.264$). Every other
-strategy loses between 19\% (RM\_MOM) and 98\% (NCO\_RT) of capital,
-and six post outright \emph{negative} Sharpe: NCO\_RT ($-0.414$),
-MaxDiv ($-0.163$), CS\_MOM ($-0.161$), RM\_MOM ($-0.160$), HERC
-($-0.038$) and ERC ($-0.026$).
+terms. Only four strategies make money, all of them the BTC-concentrating
+risk allocators: the passive HODL\_BTC benchmark ($+106\%$, Sharpe
+$0.585$), MVP ($+66\%$, $0.482$), and CRISP and NCO\_CRISP ($+20\%$
+each, Sharpe $0.363$ and $0.368$); NCO essentially breaks even
+($-4\%$, $0.264$). Every other strategy loses between 19\% (RM\_MOM)
+and 98\% (NCO\_RT) of capital, and six post outright \emph{negative}
+Sharpe: NCO\_RT ($-0.414$), MaxDiv ($-0.163$), CS\_MOM ($-0.161$),
+RM\_MOM ($-0.160$), HERC ($-0.038$) and ERC ($-0.026$).
 
 \paragraph{Four findings from the regime comparison.}
 
@@ -861,17 +908,19 @@ works'' framing was largely a COVID-rally artifact:
 \emph{HRP diversifies risk but does not produce capital appreciation
 in non-bull crypto regimes}.
 
-\textbf{(2) NCO's edge is not obviously only a bull-market artefact.} NCO loses
-only 4\% of capital post-COVID against baseline HRP's 60\%, and its
-post-COVID Sharpe ($0.264$) trails only the two outright-concentration
-plays, HODL\_BTC and MVP. Whatever NCO is doing, concentrating into
-low-volatility assets through nested minimum variance, it helps in
-\emph{both} regimes, not only the rally. It is the one piece of
-evidence in the paper that an \emph{allocation} choice, rather than
-luck, separates a constructed portfolio from the HRP pack; that the
-edge is still not statistically significant (\S\ref{sec:results-power})
-is consistent with limited power under the current design, leaving the
-effect unresolved rather than established.
+\textbf{(2) The risk-based allocators hold up across regimes.} NCO,
+CRISP and the NCO--CRISP hybrid all stay positive or near-flat
+post-COVID (Sharpe $0.26$--$0.37$, total return $-4\%$ to $+20\%$)
+against baseline HRP's $-60\%$, and CRISP and NCO\_CRISP remain
+pairwise-significant against HRP in the post-COVID window as well
+(Ledoit--Wolf $p=0.017$ and $0.022$). Whatever these allocators are
+doing --- concentrating into low-volatility assets via
+correlation-shrinkage or nested minimum variance --- helps in
+\emph{both} regimes, not only the rally. They are the paper's evidence
+that an \emph{allocation} choice, rather than luck, separates a
+constructed portfolio from the HRP pack; that the multiple-testing
+corrected SPA still does not confirm it (\S\ref{sec:results-inference})
+leaves the effect strongly suggested but not established.
 
 \textbf{(3) Embedding variants partially reverse against baseline HRP
 in the harder regime.} In the full window all four embedding variants
@@ -912,6 +961,8 @@ HRP\_Contrastive    &  0.710 &  0.056 & --0.655\\
 HRP\_PathSig        &  0.714 &  0.055 & --0.659\\
 HRP\_TS2Vec         &  0.703 &  0.047 & --0.657\\
 HRP\_NodeEmbed      &  0.705 &  0.031 & --0.674\\
+\textbf{CRISP}      &  \textbf{0.989} &  \textbf{0.363} & --0.626\\
+\textbf{NCO\_CRISP} &  \textbf{0.977} &  \textbf{0.368} & --0.610\\
 \textbf{NCO}        &  \textbf{0.933} &  \textbf{0.264} & --0.669\\
 MVP                 &  1.057 &  0.482 & --0.575\\
 MaxDiv              &  0.719 & --0.163 & --0.882\\
@@ -1072,26 +1123,43 @@ matters}
 The results of \S\ref{sec:results} point to one practical conclusion.
 Varying the \emph{clustering} step, across 547 hyperparameter cells,
 never separated a variant from baseline HRP; varying the
-\emph{allocation} step did, in both directions (NCO to Sharpe $0.93$,
-the return-tilted NCO to $-97\%$). HRP and all its variants share one
-allocation rule, inverse-variance recursive bisection, and that rule,
-not the dendrogram, is what holds the family together. For a
-practitioner the implication is narrow but useful: on this evidence,
-effort spent engineering the clustering distance is lower-yield than
-effort spent on the allocation objective.
+\emph{allocation} step did, in both directions (CRISP and the
+NCO--CRISP hybrid to Sharpe $\approx0.98$, the return-tilted NCO to
+$-97\%$). HRP and all its variants share one allocation rule,
+inverse-variance recursive bisection, and that rule, not the
+dendrogram, is what holds the family together. The NCO--CRISP hybrid
+is the cleanest test: it places CRISP's correlation-shrinkage solve
+inside NCO's hierarchical nesting, and lands \emph{between} its two
+parents (NCO 0.93, CRISP 0.99) --- the shrinkage and the nesting are
+substitutes, not complements. For a practitioner the implication is
+narrow but useful: on this evidence, effort spent engineering the
+clustering distance is lower-yield than effort spent on the allocation
+objective.
 
-\subsection{Why does Hansen SPA fail to reject, even for NCO?}
-NCO posts a $+0.19$ Sharpe edge over HRP that holds in both the full
-and the post-COVID windows, yet neither the pairwise Ledoit--Wolf test
-($p=0.22$) nor the Hansen SPA ($p_{\text{consistent}}=0.41$) rejects.
-This is not a contradiction. The power analysis
-(\S\ref{sec:results-power}) shows that on a 6.3-year crypto sample a
-strategy whose allocation departs substantively from HRP must beat it by
-$\approx0.4$--$0.8$ annualised Sharpe to be detected at 80\% power;
-NCO's $+0.19$, and even MVP's $+0.31$, fall below that threshold. The
-reading of the null is therefore precise: no strategy beats HRP by an
-edge this design can resolve, which, given the power floor, leaves
-NCO's positive observed edge an open question rather than a refuted one.
+The return-tilted NCO also speaks to a concurrent result.
+\citet{wuebben2026crisp} reports, via Monte Carlo, that making a
+hierarchical allocator return-aware improves out-of-sample Sharpe; our
+live-market evidence is the sharp opposite --- a momentum-tilted NCO is
+the worst strategy in the comparison. The two are reconcilable: a return
+signal helps only when it carries genuine out-of-sample predictive
+content, which a 63-day crypto-momentum signal over 2020--2026 does not.
+The simulation optimism and the live-data failure together delimit when
+signal-aware hierarchical allocation is worth attempting.
+
+\subsection{Why does the Hansen SPA fail to reject, even for CRISP?}
+CRISP and the NCO--CRISP hybrid each post a $\approx+0.24$ Sharpe edge
+over HRP that is pairwise-significant (Ledoit--Wolf $p\approx0.01$) in
+both the full and the post-COVID windows, yet the Hansen SPA
+($p_{\text{consistent}}=0.41$) does not reject. This is not a
+contradiction --- it is the multiple-testing correction working as
+intended. The pairwise test asks ``does \emph{this} strategy beat
+HRP?''; the SPA asks ``does \emph{the best of 24 searched strategies}
+beat HRP, given that we searched 24?'', and inflates the critical
+value accordingly. CRISP's and NCO--CRISP's edges clear the first bar
+and not the second. The honest reading is therefore specific: the two
+shrinkage allocators show a real, regime-robust pairwise edge, but it
+is not large enough to survive correction for the breadth of the
+search --- it is strongly suggested, not established.
 
 \subsection{Detoning hurts in BTC-led regimes}
 Removing the dominant market mode is theoretically elegant, in that it
@@ -1137,9 +1205,9 @@ realised returns have been dominated by the direction of BTC.
 \label{sec:conclusion}
 %% ===========================================================================
 
-We evaluated 23 constructed portfolio strategies (thirteen HRP-family
+We evaluated 25 constructed portfolio strategies (thirteen HRP-family
 variants: the baseline, eight correlation/covariance constructions and
-four embedding-based variants; four risk-based comparators; three
+four embedding-based variants; five risk-based comparators; four
 nested-clustering optimisers; and three momentum strategies) on a
 survivorship-bias-corrected, point-in-time cryptocurrency universe of
 146 ever-included symbols, over 76 monthly rebalances from 2020-02 to
@@ -1153,30 +1221,32 @@ detectable outperformance over baseline HRP: across a 547-cell
 hyperparameter grid no configuration escapes the HRP-family Sharpe
 band, and the combined Hansen SPA cannot reject the null
 ($p_{\text{consistent}}=0.91$). The \emph{allocation} step does matter:
-Nested Clustered Optimization, which re-optimises within and across
-clusters, reaches Sharpe 0.93, a $+0.19$ edge over HRP robust across
-both the full and the post-COVID windows, while a return-tilted NCO
-collapses to $-97\%$. Even NCO's edge is not statistically significant:
-a power analysis shows the design can only resolve Sharpe differences
-above $\approx0.4$ for strategies that depart substantively from HRP,
-so the null is a statement about detectable effect size rather than a
-proof of zero effect.
+the CRISP correlation-shrinkage portfolio (Sharpe 0.99), an NCO--CRISP
+hybrid (0.98) and NCO (0.93) all clear baseline HRP, while a
+return-tilted NCO collapses to $-97\%$. CRISP and NCO--CRISP even beat
+HRP at the pairwise level in both the full and post-COVID windows
+(Ledoit--Wolf $p\approx0.01$). But the Hansen SPA, correcting for the
+24-candidate search, still does not reject the null
+($p_{\text{consistent}}=0.41$): no edge survives the multiple-testing
+correction. The null is a statement about detectable, search-corrected
+effect size rather than a proof of zero effect.
 
 Two caveats frame the result. First, a passive 100\% BTC hold beats
 every diversified portfolio, and the only constructed strategies that
-beat \emph{it} (MVP, NCO) win by concentrating back into BTC; in this
-asset class and regime, portfolio construction has been second-order to
-the BTC beta. Second, in the post-COVID sub-sample every diversified
-HRP variant lost 51--64\% of capital, so the ``diversification works''
-reading of the full window is itself regime-conditional. We also
-retract an earlier cluster-stability claim that the 76-snapshot
-re-analysis falsifies.
+beat \emph{it} (MVP, CRISP, NCO--CRISP, NCO) win by concentrating back
+into BTC; in this asset class and regime, portfolio construction has
+been second-order to the BTC beta. Second, in the post-COVID sub-sample
+every diversified HRP variant lost 51--64\% of capital, so the
+``diversification works'' reading of the full window is itself
+regime-conditional. We also retract an earlier cluster-stability claim
+that the 76-snapshot re-analysis falsifies.
 
 The paper's contribution is an empirically-tested map of which HRP
 design choices affect performance: of the many parameters an HRP
 practitioner can vary, only the allocation objective produces a
-detectable change, and even the one strategy that improves on baseline
-(NCO) does so by an edge this sample size cannot certify.
+detectable change, and even the strategies that improve on baseline
+(CRISP, NCO--CRISP) do so by an edge that does not survive correction
+for the number of strategies tried.
 
 Several directions remain open for future work. Time-varying
 conditional covariance (DCC-GARCH) would give the dynamic-correlation

@@ -1368,6 +1368,107 @@ class NCOReturnTilted(NCO):
         return self.weights
 
 
+def _crisp_weights(cov: np.ndarray, gamma: float = 0.5) -> np.ndarray:
+    """Long-only CRISP weights for a covariance block.
+
+    Solves :math:`P_\\gamma w = \\mathbf{1}` with
+    :math:`P_\\gamma = (1-\\gamma)\\,\\mathrm{diag}(\\Sigma) + \\gamma\\,\\Sigma`
+    (variance-preserving correlation shrinkage), then projects the
+    solution onto the simplex (clip negatives, renormalise).
+    """
+    cov = np.asarray(cov, dtype=float)
+    n = cov.shape[0]
+    if n == 1:
+        return np.array([1.0])
+    p_gamma = (1.0 - gamma) * np.diag(np.diag(cov)) + gamma * cov
+    mu = np.ones(n)
+    try:
+        w = np.linalg.solve(p_gamma, mu)
+    except np.linalg.LinAlgError:
+        w = np.linalg.lstsq(p_gamma, mu, rcond=None)[0]
+    w = np.clip(w, 0.0, None)
+    total = w.sum()
+    if not np.isfinite(total) or total <= 0:
+        w = np.ones(n)
+        total = w.sum()
+    return w / total
+
+
+class CRISP(PortfolioStrategy):
+    """Correlation-Regularised Iterative Shrinkage Portfolio.
+
+    Solves the linear system :math:`P_\\gamma w = \\mu` for portfolio
+    weights, where :math:`P_\\gamma = (1-\\gamma)\\,\\mathrm{diag}(\\Sigma)
+    + \\gamma\\,\\Sigma` is a variance-preserving shrinkage of the sample
+    covariance --- the asset variances (the diagonal) are kept exact while
+    the off-diagonal covariances are shrunk by the factor ``gamma``.
+    ``gamma`` interpolates between an inverse-variance rule (``gamma=0``)
+    and a full minimum-variance solve (``gamma=1``).
+
+    Reference: Wuebben (2026), "Beyond De Prado and Cotton". We use the
+    signal-free form (mu = 1), which makes CRISP a pure risk-based
+    comparator, and fix ``gamma`` at the midpoint 0.5 rather than tuning
+    it in-sample. Long-only weights are obtained by projecting the linear
+    solution onto the simplex (clip negatives, renormalise).
+    """
+
+    def __init__(self, returns: pd.DataFrame, gamma: float = 0.5) -> None:
+        super().__init__(returns)
+        self.gamma = gamma
+
+    def get_weights(self) -> pd.Series:
+        self.weights = pd.Series(_crisp_weights(self.cov.values, self.gamma),
+                                 index=self.cov.index)
+        return self.weights
+
+
+class NCOCrisp(NCO):
+    """Nested Clustered Optimization with CRISP-regularised allocation.
+
+    Identical clustering and nesting to :class:`NCO`, but each within-
+    and across-cluster minimum-variance solve is replaced by a CRISP
+    solve (:func:`_crisp_weights`) on the corresponding block covariance.
+    The hierarchy isolates the most strongly-correlated --- and hence
+    most near-singular --- covariance blocks, and the CRISP shrinkage
+    stabilises the optimisation inside them. At ``gamma=1`` it reduces
+    exactly to NCO; at ``gamma=0`` to a nested inverse-variance
+    allocation. ``gamma`` is fixed at 0.5, not tuned.
+    """
+
+    def __init__(self, returns: pd.DataFrame, linkage_method: str = "ward",
+                 n_clusters: Optional[int] = None, gamma: float = 0.5) -> None:
+        super().__init__(returns, linkage_method=linkage_method,
+                         n_clusters=n_clusters)
+        self.gamma = gamma
+
+    def get_weights(self) -> pd.Series:
+        clusters = HERC._clusters(self)
+        cl_ids = sorted(clusters)
+        intra, cl_returns = {}, {}
+        for lab in cl_ids:
+            items = clusters[lab]
+            if len(items) == 1:
+                intra[lab] = pd.Series([1.0], index=items)
+            else:
+                sub = self.returns[items]
+                w = _crisp_weights(sub.cov().values, self.gamma)
+                intra[lab] = pd.Series(w, index=items)
+            cl_returns[lab] = (self.returns[items] * intra[lab]).sum(axis=1)
+
+        if len(cl_ids) >= 2:
+            cl_df = pd.DataFrame({lab: cl_returns[lab] for lab in cl_ids})
+            w = _crisp_weights(cl_df.cov().values, self.gamma)
+            inter = pd.Series(w, index=cl_ids)
+        else:
+            inter = pd.Series([1.0], index=cl_ids)
+
+        w = pd.Series(0.0, index=list(self.cov.index))
+        for lab in cl_ids:
+            w.loc[intra[lab].index] = float(inter[lab]) * intra[lab].values
+        self.weights = w / w.sum()
+        return self.weights
+
+
 # =============================================================================
 # EMBEDDING-DISTANCE HRP VARIANTS (feature/embedding-hrp-variants)
 # =============================================================================

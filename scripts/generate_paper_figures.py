@@ -30,7 +30,7 @@ from src.backtest import WalkForwardBacktest, COST_SCENARIOS
 from src.portfolio_maker import (
     HRP, HRPDetoned, HRPPartialCorr, HRPTailDep, HRPTailDepShrunk,
     HRPShrunkCov, HRPVolStd, IVP, MVP, ERC, MaxDiv, NetworkRiskParity,
-    HERC, NCO,
+    HERC, NCO, CRISP, NCOCrisp,
 )
 from src.denoising import denoise_corr_constant_residual, detone_corr
 
@@ -57,7 +57,8 @@ factories = {
     "HRP_Detoned":        lambda r: HRPDetoned(r),
     "HRP_ShrunkCov":      lambda r: HRPShrunkCov(r),
     "NCO":                lambda r: NCO(r),
-    "HERC":               lambda r: HERC(r),
+    "NCO_CRISP":          lambda r: NCOCrisp(r),
+    "CRISP":              lambda r: CRISP(r),
     "MVP":                lambda r: MVP(r),
     "ERC":                lambda r: ERC(r),
 }
