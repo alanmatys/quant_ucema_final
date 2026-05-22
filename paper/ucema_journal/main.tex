@@ -775,12 +775,13 @@ scales with how far the strategy departs: the more concentrated the
 portfolio, the noisier the paired Sharpe difference and the higher the
 threshold. The heavily-concentrated MVP ($N\approx3$) needs
 $\approx0.47$ and NCO ($N\approx5$) $\approx0.42$, so their observed
-$+0.31$ and $+0.19$ edges, though economically large, fall short. The
-more moderate concentration of CRISP and NCO\_CRISP ($N\approx7$--$9$)
-places their detectable-edge threshold between NCO's $0.42$ and the
-tightly-coupled HRP family's $0.04$--$0.12$ band, low enough that their
-$\approx+0.24$ edges \emph{do} clear pairwise significance while MVP's
-larger but noisier edge does not.
+$+0.31$ and $+0.19$ edges, though economically large, fall short.
+CRISP and NCO\_CRISP, less concentrated ($N\approx7$--$9$), carry the
+lowest thresholds of any structurally-distinct strategy, $\approx0.27$
+and $\approx0.26$. Their observed $+0.25$ and $+0.24$ edges sit just
+below even that mark, yet still clear the pairwise test in this sample
+($p\approx0.01$), whereas MVP's larger $+0.31$ edge, against a far
+higher $0.47$ threshold, does not.
 \textbf{The pairwise null is therefore a statement about detectable
 effect size given concentration; it is the multiple-testing-corrected
 SPA, not the per-strategy power, that ultimately declines to reject.}
