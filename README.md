@@ -1,13 +1,14 @@
 # HRP Variants for Cryptocurrency Portfolios — UCEMA Continuation Paper
 
 A continuation of the MACI 2025 paper *"Hierarchical Risk Parity for
-Cryptocurrency Portfolios: A Comparative Analysis"*. It compares **22
-portfolio strategies** — twelve HRP-family variants (including four
-embedding-based ones), four risk-based comparators, three nested-clustering
-optimisers (HERC, NCO, return-tilted NCO), and three crypto-momentum
-strategies — on a **survivorship-bias-corrected, point-in-time Binance
-universe**, with Ledoit–Wolf and Hansen SPA inference wrapped around every
-comparison.
+Cryptocurrency Portfolios: A Comparative Analysis"*. The final committed
+comparison set contains **22 constructed strategies** — twelve HRP-family
+variants (including four embedding-based ones), four risk-based
+comparators, three nested-clustering optimisers (HERC, NCO,
+return-tilted NCO), and three crypto-momentum strategies — plus the
+passive `HODL_BTC` benchmark, on a **survivorship-bias-corrected,
+point-in-time Binance universe**, with Ledoit–Wolf and Hansen SPA
+inference wrapped around every comparison.
 
 The headline finding: across an exhaustive hyperparameter search the
 *clustering* step never separates from baseline HRP, while the *allocation*
@@ -69,12 +70,16 @@ run from any working directory.
 # Test suite (89 tests)
 uv run pytest -q
 
-# Full re-run: all 22 strategies x scenarios + inference (~1-2 h; the
-# embedding strategies retrain neural encoders at every rebalance)
+# Main full re-run: headline panel, scenarios, and inference for the
+# 21-strategy main roster (~1-2 h; the embedding strategies retrain
+# neural encoders at every rebalance)
 uv run python scripts/rerun_all.py
 
-# Add the return-tilted NCO candidate and re-run inference
+# Append the return-tilted NCO candidate and refresh inference/results
 uv run python scripts/add_nco_rt.py
+
+# Rebuild the final committed PIT universe artifact from committed CSV inputs
+uv run python scripts/build_pit_universe_final.py
 
 # Power analysis (detectable Sharpe edge at 80% power)
 uv run python scripts/power_analysis.py

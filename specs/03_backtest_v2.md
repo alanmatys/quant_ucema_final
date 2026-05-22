@@ -1,622 +1,182 @@
-# Spec 03 — Backtest v2 (Extended Comparison)
-
-**Status:** Draft — v2 (revised after deep-research review)
-**Owner:** Alan Matys, Federico Rodriguez
-**Depends on:**
-- [01_denoising.md](01_denoising.md), [02_detoning.md](02_detoning.md), [06_hrp_variants.md](06_hrp_variants.md) — HRP variants
-- [07_comparators.md](07_comparators.md) — additional comparator strategies
-- [08_universe.md](08_universe.md) — point-in-time universe (must be built first)
-- [09_inference.md](09_inference.md) — statistical inference framework
-
----
-
-## 1. Motivation
-
-The MACI 2025 paper compared HRP, IVP, MVP, and HODL baselines on a single backtest.
-The continuation paper adds:
-
-- multiple HRP variants (denoised, detoned, partial-correlation, EWMA-dynamic, tail-dependence),
-- three additional comparators (ERC, MaxDiv, NRP),
-- momentum families (CS_MOM, TS_MOM, RM_MOM, MOM_HRP),
-- a point-in-time universe (no survivorship bias),
-- multi-cost-scenario sensitivity,
-- statistical significance tests across all comparisons.
-
-A single, reproducible backtesting protocol is required so every numeric claim in the
-new paper is traceable to one notebook and one (or a small set of) results CSV(s).
-**If a result is not in the CSVs emitted by this notebook, it does not go in the paper.**
-
-## 2. Requirements
-
-### 2.1 Universe and data
-
-R1. **Point-in-time universe** per [08_universe.md](08_universe.md):
-   - Monthly snapshots, **top-50** by rolling 30-day Binance USDT quote volume
-     with entry/exit buffers (revised from top-30 per Spec 08 R2).
-   - Source artifact: `data/pit_universe.csv`.
-   - Includes assets later delisted (LUNA, FTT, etc.) to remove survivorship.
-   - **91 unique symbols** in the underlying price dataset, **87 ever-included**
-     in the PIT universe, **38 dropped during the window** (Phase 4.5 expansion).
-   - **Date range: 2017-08-17 → 2026-05-18** (≈ 9 years; 100 monthly snapshots).
-
-R1b. **Estimation window**: 365 days (rolling) at each rebalance snapshot,
-    with a per-asset min-periods filter requiring ≥ 180 daily observations
-    in the window. Assets failing the filter are dropped from that
-    snapshot's strategy universe (logged, not crashed). Rationale:
-    several newer assets are admitted via the 180-day age filter (Spec 08
-    R2) but don't yet have 730 days of history; the 365-day window
-    accommodates these without artificially shrinking the universe.
-
-R2. **Price data**: `data/binance_usdt_pairs_pit_2019-2024_1d.csv` (PIT-augmented
-    version of the existing daily CSV — extended to include delisted pairs).
-
-### 2.2 Strategies in the comparison
-
-**Risk-based / clustering:**
-- HRP (baseline from MACI 2025)
-- HRP_Denoised ([Spec 01](01_denoising.md))
-- HRP_Detoned ([Spec 02](02_detoning.md))
-- HRP_PartialCorr ([Spec 06](06_hrp_variants.md))
-- HRP_Dynamic_94 ([Spec 06](06_hrp_variants.md), λ = 0.94 — RiskMetrics default)
-- HRP_Dynamic_97 ([Spec 06](06_hrp_variants.md), λ = 0.97 — slower decay)
-- HRP_Dynamic_99 ([Spec 06](06_hrp_variants.md), λ = 0.99 — very slow decay)
-- HRP_TailDep ([Spec 06](06_hrp_variants.md)) — **headline** (promoted from appendix)
-- HRP_ShrunkCov ([Spec 06](06_hrp_variants.md)) — Ledoit-Wolf shrunk covariance baseline
-- HRP_VolStd ([Spec 06](06_hrp_variants.md) §2.5) — vol-standardized returns before correlation
-- HRP_TailDepShrunk ([Spec 06](06_hrp_variants.md) §2.6) — hybrid (Report 3 #1 pick)
-- IVP
-- MVP
-- ERC ([Spec 07](07_comparators.md))
-- MaxDiv ([Spec 07](07_comparators.md))
-- NetworkRiskParity ([Spec 07](07_comparators.md))
-
-**Momentum:**
-- CS_MOM
-- TS_MOM
-- RM_MOM
-- MOM_HRP
-- MOM_HRP_Detoned (bonus variant)
-
-**Baselines:**
-- HODL BTC, HODL ETH
-- Equal-Weight (1/N)
-
-Total: **24 strategies** in the headline comparison
-(11 HRP variants — incl. 3 EWMA λ values + HRP_VolStd + HRP_TailDepShrunk —
-+ 5 risk-based/network comparators + 5 momentum + 3 baselines).
-
-Plus a **linkage-method robustness sweep** ([Spec 06](06_hrp_variants.md) §3.3):
-selected HRP variants (HRP, HRP_Detoned, HRP_TailDep, HRP_TailDepShrunk) rerun
-with `linkage_method ∈ {'single', 'average', 'complete', 'ward'}`. Reported in
-a separate appendix table (not bloated into the headline comparison).
-
-### 2.3 Scenarios
-
-- **Scenario A — Static allocation**: weights set once at window start, no rebalancing.
-  All risk-based and comparator strategies (momentum strategies skipped — meaningless without rebalancing).
-
-- **Scenario B — Monthly calendar rebalancing**: 30-day cadence. All strategies.
-
-- **Scenario C — Threshold rebalancing**: rebalance only when max absolute weight
-  drift exceeds 5% from target. Applied to HRP, HRP_Dynamic, MOM_HRP, RM_MOM —
-  the four strategies most sensitive to turnover.
-
-- **Scenario C' — Smoothed rebalancing** (added per second-round deep-research):
-  practical refinement of Scenario C with two extra knobs:
-  - Linear smoothing: `w_traded = η · w_prev + (1 - η) · w_target` (default η = 0.25).
-  - Minimum trade threshold: skip any per-asset weight delta below 25 bps.
-  Reduces turnover at the cost of some tracking-error to the target weights.
-  Reported alongside Scenario C for the same four strategies. Hyperparameter
-  grid: η ∈ {0, 0.25, 0.5}, min-trade threshold ∈ {10, 25, 50} bps.
-
-### 2.4 Cost model
-
-R3. **Multi-scenario cost grid** (results reported for each):
-   - **Zero costs** — academic-style headline, for direct comparison with MACI 2025.
-   - **Conservative CEX**: 10 bps per side + linear slippage = 2 bps × (notional / 30-day median volume).
-   - **Optimistic CEX**: 7.5 bps per side (Binance BNB-discounted) + 1 bp slippage.
-   - **Stress**: 10 bps per side + 4 bps slippage (crisis approximation).
-   - **Liquidation premium**: when a position is forced out by delisting (PIT), apply 2× the active cost-scenario slippage.
-
-R4. The paper's headline tables use **Conservative CEX**; the other three are
-    reported in a sensitivity appendix.
-
-### 2.5 Metrics
-
-R5. Same set across all strategies and scenarios:
-   - Total Return (%), Annualized Return (%)
-   - Annualized Volatility (%)
-   - Sharpe (rf = 0), Sortino, Calmar
-   - Maximum Drawdown (%)
-   - Turnover (mean per rebalance), Total transaction costs (%)
-   - Effective N (1 / Σwᵢ²), Max weight (%)
-   - Skewness, Kurtosis
-   - **Bootstrap 95% CIs** for Sharpe, Sortino, MaxDD (via [Spec 09](09_inference.md))
-
-R5b. **Cluster stability diagnostics** (per snapshot, for every HRP-family
-    strategy that builds a dendrogram):
-   - **Cophenetic correlation** — Pearson correlation between the cophenetic
-     distance matrix from the dendrogram and the original distance matrix.
-     Measures how well the tree preserves pairwise distances (range [-1, 1];
-     ≥ 0.7 is "good").
-   - **Adjusted Rand Index (ARI)** between cluster assignments at consecutive
-     rebalance dates (cutting both dendrograms at K=5 clusters via fcluster).
-     Measures cluster stability over time (range [-1, 1]; ≥ 0.5 is "stable").
-   - Both are written to `data/cluster_stability.csv` with columns
-     `[date, strategy, cophenetic_corr, ari_vs_prev]`.
-
-### 2.6 Statistical inference
-
-R6. Per [Spec 09](09_inference.md):
-   - Pairwise **Ledoit-Wolf Sharpe-difference p-value** vs `HRP` baseline.
-   - **Hansen SPA p-value** across all 20 strategies vs HRP.
-   - **Stationary block bootstrap** CIs for headline metrics.
-
-### 2.7 Reproducibility
-
-R7. All random seeds fixed (numpy seed = 42, bootstrap seed = 42).
-R8. Notebook executes end-to-end without manual intervention.
-R9. Output paths are deterministic and overwrite-safe.
-
-## 3. Interface
-
-### 3.1 Notebooks
-
-- `notebooks/build_pit_universe.ipynb` ([Spec 08](08_universe.md)) — must run first.
-- `notebooks/backtest_v2.ipynb` — runs Scenarios A/B/C across all cost variants;
-  produces all CSVs and figures.
-
-### 3.2 Outputs
-
-```
-# Metrics (committed)
-data/backtest_v2_static_results.csv               # Scenario A
-data/backtest_v2_rebalance_results.csv            # Scenario B, all cost scenarios
-data/backtest_v2_threshold_results.csv            # Scenario C + C' (smoothed)
-data/inference_sharpe_diff.csv                    # LW pairwise vs HRP
-data/inference_spa.csv                            # Hansen SPA
-data/inference_bootstrap_cis.csv                  # CIs for headline metrics
-data/cluster_stability.csv                        # Cophenetic corr + ARI per snapshot
-data/hrp_shrunkcov_intensity.csv                  # Time-series of Ledoit-Wolf α
-
-# Time-series artifacts (gitignored, reproducible — CSV or parquet
-# depending on whether pyarrow is installed; .gitignore covers both extensions)
-data/backtest_v2_weights_history.csv
-data/backtest_v2_returns_history.csv
-
-# Figures (committed)
-paper/figures/static_cumulative_returns.png
-paper/figures/rebalance_cumulative_returns.png
-paper/figures/metrics_heatmap.png
-paper/figures/turnover_analysis.png
-paper/figures/weight_concentration.png
-paper/figures/return_distributions.png
-paper/figures/risk_return_scatter.png
-paper/figures/detoning_effect.png                 # Eigenvalue spectrum before/after
-paper/figures/dendrograms_comparison.png          # HRP vs HRP_Detoned vs HRP_PartialCorr
-paper/figures/cost_sensitivity_sharpe.png         # Sharpe across cost scenarios
-paper/figures/threshold_vs_calendar_turnover.png  # Scenario C diagnostic
-paper/figures/pit_universe_evolution.png          # Membership timeline
-paper/figures/spa_pvalues_barplot.png             # Hansen SPA results
-paper/figures/cluster_stability_timeseries.png    # Cophenetic + ARI over time per strategy
-paper/figures/shrinkage_intensity_timeseries.png  # LW α evolution
-paper/figures/turnover_smoothing_frontier.png     # Scenario C' η-vs-turnover-vs-net-Sharpe
-paper/figures/detoning_vs_partial_corr.png        # Phase 2 finding (ρ ≈ 0.99)
-```
-
-## 4. Acceptance Criteria
-
-AC1. Notebook runs top-to-bottom on a clean kernel without errors.
-
-AC2. Every figure listed in §3.2 referenced from [04_paper.md](04_paper.md) is
-     actually produced (no orphan figures, no missing figures).
-
-AC3. Every numeric claim in the paper's results section is traceable to a (strategy,
-     scenario, cost_scenario, metric) row in one of the committed CSVs.
-
-AC4. Parquet artifacts are gitignored; CSVs and figures are committed.
-
-AC5. For strategies present in both the MACI 2025 paper and Backtest v2 (HRP, IVP,
-     MVP), Scenario B + Conservative-CEX Sharpe ratios match the MACI paper within
-     **±0.10** (relaxed from ±0.05 because of PIT universe differences). **Any
-     larger deviation must be explained explicitly in the paper.**
-
-AC6. `HRP_Detoned` and `HRP_PartialCorr` produce **correlated but not identical**
-     weight vectors per [Spec 06 AC2](06_hrp_variants.md#4-acceptance-criteria) —
-     evidence that they target the market mode via different mathematical routes.
-
-AC7. PIT universe contains at least one significant delisted asset (e.g. LUNA)
-     and its position is liquidated cleanly with the liquidation premium applied.
-
-AC8. SPA test is run across all comparators; results table includes consistent +
-     lower + upper p-values per [Spec 09](09_inference.md).
-
-AC9. Headline cost-scenario figures (`Conservative CEX`) replicate qualitatively
-     under the other three cost scenarios; "qualitatively" meaning the ranking
-     of the top-3 strategies by Sharpe is preserved.
-
-## 5. Out of Scope
-
-- Hyperparameter optimization on the test set (use defaults from the variant
-  specs; grid search results are appendix-only, with SPA applied).
-- Walk-forward retuning of momentum parameters.
-- Tax/funding modeling.
-- Intraday (hourly) data layer.
-
-## 6. References
-
-- MACI 2025 paper: [paper/MACI_latex_eng/MACIhrp2025final.tex](../paper/MACI_latex_eng/MACIhrp2025final.tex)
-- Existing notebook [notebooks/backtesting.ipynb](../notebooks/backtesting.ipynb) — base loop to extend.
-- Existing notebook [notebooks/momentum_backtest.ipynb](../notebooks/momentum_backtest.ipynb) — momentum metrics to merge in.
-- Han, Y., et al. (2024). Realistic-assumption momentum in cryptocurrency.
-
----
-
-## 7. Phase 5a results (headline run)
-
-**Setup:** Scenario B (monthly rebalancing) on the expanded PIT universe,
-2020-01-01 to 2026-05-18 (~6.3 years, 76 rebalances), Conservative CEX
-cost (10 bps fee + 2 bps slippage + 2× liquidation premium).
-
-| Strategy | Sharpe (ann) | Total Return | MaxDD | Avg N_eff | Avg Turnover |
-|---|---|---|---|---|---|
-| MVP | **0.950** | **+2035%** | -80.7% | 5.5 | 0.405 |
-| HODL_BTC | 0.867 | +1002% | -76.6% | 1.0 | — |
-| MaxDiv | 0.793 | +627% | -92.2% | 9.9 | 0.459 |
-| **HRP_ShrunkCov** | **0.748** | +436% | -84.4% | 27.2 | 0.308 |
-| HRP_TailDep | 0.733 | +396% | -85.2% | 30.1 | 0.317 |
-| HRP | 0.732 | +393% | -85.3% | 28.4 | 0.314 |
-| HRP_TailDepShrunk | 0.729 | +384% | -85.2% | 31.7 | 0.308 |
-| HRP_VolStd | 0.728 | +381% | -84.9% | 30.1 | 0.307 |
-| HRP_Detoned | 0.701 | +321% | -84.5% | 35.0 | 0.210 |
-| HRP_PartialCorr / IVP | 0.696 | +311% | -84.5% | 34.8 | 0.140 |
-| ERC | 0.686 | +277% | -85.9% | 46.6 | 0.131 |
-
-**Statistical inference (Spec 09 framework wrapped around each result):**
-
-- **Bootstrap 95% CIs (Sharpe, annualized):** only MVP [0.27, 1.58],
-  MaxDiv [0.00, 1.46], and HODL_BTC [0.06, 1.63] have CIs cleanly above
-  zero. All HRP-family variants have CIs straddling zero.
-
-- **LW Sharpe difference test vs HRP baseline:** **NONE of 11 candidates
-  reach p<0.05**. HRP_ShrunkCov beats HRP by 0.016 Sharpe (p=0.275, the
-  best HRP-family result). MVP beats HRP by 0.217 (p=0.20). HODL_BTC
-  beats HRP by 0.135 (p=0.56).
-
-- **Hansen SPA across all candidates:** **p_consistent = 0.526**, p_upper
-  = 0.870. **Cannot reject H0 that no strategy outperforms HRP** after
-  multiple-testing correction, even with 6.3 years of monthly-rebalanced
-  data and 11 candidates.
-
-**Cost sensitivity (5 key strategies × 4 cost scenarios):**
-
-Cost impact is small (Sharpe shifts <0.005 across {zero, conservative,
-optimistic, stress} scenarios). Rankings are robust. Crypto's low
-transaction costs at monthly cadence don't drive differentiation —
-the paper can use Conservative CEX as headline and refer to
-`data/backtest_v2_cost_sensitivity.csv` for the full grid.
-
-**Paper-grade findings to report (§9 of [04_paper.md](04_paper.md)):**
-
-1. **HRP_ShrunkCov is the best HRP-family variant** but improvement
-   over HRP is small (+0.016 Sharpe) and not statistically significant.
-   Validates the Phase 3.5 addition of LW shrinkage as a small refinement.
-
-2. **HRP_TailDep ties HRP exactly** (0.733 vs 0.732). The economic story
-   is validated (tail-dep doesn't hurt) but doesn't outperform — a
-   neutral finding worth reporting honestly.
-
-3. **HRP_TailDepShrunk does NOT beat HRP_TailDep** (0.729 vs 0.733).
-   Report 3's #1 hybrid recommendation does not produce the expected
-   improvement on this dataset. Contrary to the Phase 3.5 expectation.
-   Adding LW shrinkage on top of tail-dep distance was redundant
-   (per the 0.998-1.000 weight Spearman finding) and the small noise
-   it introduces slightly hurt.
-
-4. **Detoning/PartialCorr UNDERPERFORM HRP by ~0.03 Sharpe.** Removing
-   the market mode in a BTC-led bull market gave up alpha. The
-   economically-elegant approach paid the price for being too clever.
-
-5. **MVP "wins" by concentration luck.** It concentrates ~77% in BTC
-   throughout the period; BTC ran from $7k (2020) to $107k+ (2026).
-   Sharpe 0.95 with avg N_eff = 5.5. **Not skill — regime dependence.**
-   The paper must make this explicit.
-
-6. **HODL_BTC beats every diversified portfolio except MVP.** 0.87
-   Sharpe, 1002% total return. **A sobering finding the paper must
-   address: a passive 100% BTC position outperforms every diversified
-   risk-based portfolio considered.** Honest framing: "diversification
-   in crypto pays a cost during BTC-dominated regimes that is not
-   recovered by lower drawdowns on this sample."
-
-7. **Statistical conclusion:** with 6.3 years and 11 candidates, we
-   cannot reject the null that all HRP-family variants are equivalent
-   to baseline HRP. The methodological contributions of denoising,
-   detoning, partial correlation, EWMA, tail dependence, shrinkage,
-   vol standardization, and their combinations do not produce
-   statistically detectable Sharpe improvements at this sample size.
-   Future work: longer history or higher rebalance frequency may
-   resolve. For now, the paper's honest contribution is methodological
-   rigor + the empirical findings about variant convergence, not a
-   "HRP variant X beats baseline" claim.
-
-**Artifacts produced (Phase 5a):**
-- `data/backtest_v2_rebalance_results.csv` — 12-strategy summary metrics
-- `data/inference_bootstrap_cis.csv` — 95% block-bootstrap Sharpe CIs
-- `data/inference_sharpe_diff.csv` — LW pairwise p-values vs HRP
-- `data/inference_spa.csv` — Hansen SPA across all candidates
-- `data/hrp_shrunkcov_intensity.csv` — LW α time-series for ShrunkCov variants
-- `data/backtest_v2_cost_sensitivity.csv` — 5 strategies × 4 cost scenarios
-
----
-
-## 8. Phase 5b results (momentum + scenarios + cluster stability)
-
-### 8.1 Momentum strategies (Scenario B, same window/cost as §7)
-
-| Strategy | Arith Sharpe | Total Return | MaxDD | Avg Turnover |
-|---|---|---|---|---|
-| **MOM_HRP_Detoned** | **0.305** | +351% | -88.4% | 1.42 |
-| CS_MOM_vol21 | 0.233 | +228% | -89.2% | 1.42 |
-| CS_MOM_eq21 / RM_MOM | 0.216 | +210% | -90.0% | 1.40 |
-| TS_MOM_abs | 0.181 | +157% | -90.8% | 1.40 |
-| MOM_HRP | 0.136 | +106% | -92.6% | 1.44 |
-| TS_MOM_ma | 0.108 | +80% | -93.1% | 1.51 |
-
-**Headline finding:** all momentum families substantially underperformed
-the risk-based HRP family (Sharpe 0.69-0.75) in 2020-2026. Crypto momentum
-suffered from high turnover (~1.4x per rebalance = full portfolio
-reconstruction) and severe drawdowns (88-93%).
-
-**Notable: MOM_HRP_Detoned (0.305) more than doubles MOM_HRP (0.136).**
-Applying detoning to the HRP-within-momentum step substantially helps —
-the momentum-selected basket needs market-mode neutralization more than
-the full universe does, since momentum has already concentrated in
-trending names that co-move heavily.
-
-### 8.2 Scenario comparison (B / C / C')
-
-5 strategies × 3 rebalance modes (calendar 76 rebalances, threshold-5%,
-threshold-5% + smoothed eta=0.25 + 25 bps min-trade):
-
-| Strategy | B (calendar) | C (thresh 5%) | C' (smoothed) | Rebals (B/C/C') |
-|---|---|---|---|---|
-| HRP | 0.732 | **0.749** | 0.745 | 76 / 59 / 60 |
-| HRP_TailDep | 0.733 | 0.727 | 0.718 | 76 / 61 / 62 |
-| HRP_ShrunkCov | 0.748 | **0.752** | 0.745 | 76 / 60 / 60 |
-| MVP | 0.950 | 0.947 | 0.921 | 76 / 68 / 72 |
-| RM_MOM | 0.661 | 0.661 | 0.632 | 76 / 76 / 76 |
-
-**Finding:** threshold rebalancing (Scenario C) gives a small Sharpe
-uplift for HRP-family strategies (+0.017 for HRP, +0.004 for ShrunkCov)
-by skipping ~20% of calendar rebalances. Smoothing (Scenario C') trades
-off some Sharpe for further turnover reduction. **For momentum
-strategies, threshold rebalancing is no help** — their target weights
-drift so much each month that the threshold is always triggered.
-
-Output: `data/backtest_v2_threshold_results.csv` (15 rows).
-
-### 8.3 Cluster stability across 76 monthly snapshots
-
-| Metric | Pearson | TailDep |
-|---|---|---|
-| Average cophenetic correlation | **0.834** | 0.751 |
-| Average ARI vs previous snapshot (K=5) | **+0.785** | +0.639 |
-| Median ARI | **+0.840** | +0.639 |
-| Months where TailDep ARI > Pearson ARI | 21 / 75 (**28%**) | — |
-
-**Final retraction of the Phase 4 claim.** The original "TailDep clusters
-are more stable than Pearson" finding (ARI -0.047 vs +0.265, single
-year-pair) has now been replaced by 76-snapshot evidence: **Pearson
-clusters are substantially more stable, both in cophenetic correlation
-(0.83 vs 0.75) and month-over-month ARI (+0.79 vs +0.64).** The
-multi-snapshot Phase 5b cluster_stability.csv is the definitive
-reference; Spec 09 §2.4 already records the year-end 5-pair correction;
-this confirms it at monthly resolution.
-
-The economic argument for HRP_TailDep stands (joint-crash co-movement),
-but ALL secondary "stability" claims around tail-dependence vs Pearson
-are NEGATED by multi-snapshot evidence.
-
-Output: `data/cluster_stability.csv` (76 rows).
-
----
-
-## 9. Phase 8 — bug fixes + embedding variants + expanded universe
-
-### 9.1 Context
-
-External code review on 2026-05-19 surfaced four bugs in earlier
-phases. All four are now fixed (see commit `3ff4066`):
-
-1. `RiskManagedMomentum.get_weights()` was a no-op (scaling cancelled
-   by renormalisation). The bug was visible in Phase 5b output where
-   `RM_MOM` and `CS_MOM_eq21` had identical Sharpe = 0.216 — they
-   were the same strategy. Fixed: hold residual as cash per
-   Barroso & Santa-Clara.
-2. `ewma_correlation` double-counted (initialised from full-window
-   sample cov, then iterated again over the same data). Fixed: short
-   burn-in init then iterate only over the remainder.
-3. `rolling_quote_vol_30d` was MEDIAN of 30 daily volumes, not the
-   sum or mean. Fixed: mean of 30 daily quote volumes.
-4. `WalkForwardBacktest` skipped the entire OOS interval when the
-   universe had < 5 assets. Fixed: hold previous weights through
-   the skipped interval.
-
-The universe was also expanded by 150 additional delisted USDT pairs
-(commit `2517b92`) — survivorship-bias correction from the same review.
-Ever-included symbols went from 87 → 146; dropped during window
-38 → 97.
-
-Four embedding-based HRP variants were added (commit `3ff4066`):
-HRP_PathSig (path signatures), HRP_NodeEmbed (node2vec on correlation
-kNN graph), HRP_Contrastive (PyTorch contrastive SSL with Gaussian
-jitter), HRP_TS2Vec (TS2Vec-lite with timestamp masking).
-
-### 9.2 Phase 8 headline backtest (Scenario B, 19 strategies + HODL_BTC)
-
-Re-run on the corrected universe with all 4 bug fixes:
-
-| Strategy | Arith Sharpe | Total Return | Avg Turnover | LW p vs HRP |
-|---|---|---|---|---|
-| MVP | **1.057** | +2867% | 0.381 | n/s (0.067) |
-| HRP_Dynamic_94 | 0.749 | +442% | 0.474 | n/s |
-| HRP_ShrunkCov | 0.746 | +428% | 0.353 | n/s |
-| **HRP** | **0.741** | +418% | 0.360 | (baseline) |
-| HRP_VolStd | 0.735 | +402% | 0.368 | n/s |
-| MOM_HRP | 0.726 | +351% | 1.436 | n/s |
-| HRP_Contrastive | 0.723 | +371% | 0.392 | n/s |
-| HRP_NodeEmbed | 0.721 | +369% | 0.368 | n/s |
-| MaxDiv | 0.719 | +364% | 0.553 | n/s |
-| HRP_PathSig | 0.714 | +351% | 0.383 | n/s |
-| HRP_TailDep / HRP_Detoned | 0.708 | +335% | 0.365 | n/s |
-| HRP_TailDepShrunk | 0.701 | +318% | 0.352 | **p=0.050** |
-| HRP_TS2Vec | 0.699 | +318% | 0.394 | n/s |
-| HRP_PartialCorr / IVP | 0.697 | +311% | 0.182 | n/s |
-| ERC | 0.663 | +233% | 0.195 | **p=0.050** |
-| CS_MOM_eq21 | 0.663 | +217% | 1.420 | n/s |
-| RM_MOM | 0.663 | +118% | 0.366 | n/s |
-| HODL_BTC | 0.519 | n/a | — | n/s |
-
-### 9.3 Effect of the bug fixes (vs Phase 5d v1)
-
-| Strategy | v1 (buggy) | v2 (fixed) | Δ |
-|---|---|---|---|
-| HRP | 0.713 | 0.741 | +0.028 |
-| HRP_ShrunkCov | 0.695 | 0.746 | +0.051 |
-| MVP | 0.917 | 1.057 | +0.140 |
-| MaxDiv | 0.603 | 0.719 | +0.116 |
-| **RM_MOM** | **0.216 (broken)** | **0.663 (working)** | **+0.447** |
-| HRP_PathSig | 0.646 | 0.714 | +0.068 |
-| HRP_NodeEmbed | 0.659 | 0.721 | +0.062 |
-| HRP_Contrastive | 0.671 | 0.723 | +0.052 |
-| HRP_TS2Vec | (n/a) | 0.699 | new |
-
-The most consequential single change is `RM_MOM`: previously broken,
-now de-risks correctly during high-vol regimes (Sharpe 0.66, total
-return +118% with 21-25% average cash position).
-
-The mean-volume metric change + skip-OOS fix collectively elevate all
-HRP variants by ~0.03-0.05 Sharpe. Net: the **rankings within HRP
-family are mostly preserved** but the absolute numbers shift upward.
-
-### 9.4 Embeddings findings
-
-**None of the 4 embedding variants beat baseline HRP.** With the
-bug-fixed inference, NONE is significantly worse either:
-
-- HRP_Contrastive (0.723) — closest to HRP (0.741); p=0.457
-- HRP_NodeEmbed (0.721) — p=0.453
-- HRP_PathSig (0.714) — p=0.293
-- HRP_TS2Vec (0.699) — p=0.107 (closest to significance)
-
-The earlier "embeddings significantly worse than HRP" finding (Phase
-5d v1) was an artifact of the median-volume + skip-OOS bugs. After
-fixing them, the embedding variants are statistically indistinguishable
-from baseline HRP. **The honest paper-grade conclusion: embeddings
-neither help nor hurt on this universe at this time horizon.**
-
-### 9.5 Hansen SPA across all 19 candidates
-
-p_consistent = **0.533**, p_upper = 0.797. Cannot reject the null
-that no strategy outperforms baseline HRP after multiple-testing
-correction. MVP has the highest studentized score (+1.24); HODL_BTC
-+0.99; all HRP variants ≤ 0 (i.e. statistically the same as or
-slightly worse than baseline HRP).
-
----
-
-## 10. Phase 8d — regime check: exclude the COVID bull run
-
-To check whether the §9 conclusions are dominated by the 2020-03 → 2021-11
-COVID bull market (when BTC ran from ~$5k to ~$69k), re-ran the full
-19-strategy backtest with `start = 2022-01-01` (~4.4 years OOS, 53 monthly
-rebalances). All other parameters identical to §9.
-
-### 10.1 Post-COVID headline (Conservative CEX cost, 2022-2026)
-
-| Strategy | Arith Sharpe | Total Return | MaxDD | LW p vs HRP |
-|---|---|---|---|---|
-| **MVP** | **+0.482** | **+66%** | -71% | 0.063 |
-| HRP_Dynamic_94 | +0.099 | -51% | -76% | 0.113 |
-| HRP_Contrastive | +0.071 | -57% | -78% | 0.520 |
-| HRP_NodeEmbed | +0.057 | -59% | -77% | 0.760 |
-| HRP_PathSig | +0.055 | -59% | -78% | 0.793 |
-| HRP_TS2Vec | +0.051 | -59% | -77% | 0.910 |
-| **HRP (baseline)** | **+0.047** | -60% | -77% | --- |
-| HRP_TailDep | +0.046 | -60% | -78% | 0.963 |
-| HRP_PartialCorr / IVP | +0.045 | -61% | -77% | 0.973 |
-| HRP_VolStd | +0.040 | -60% | -79% | 0.693 |
-| HRP_ShrunkCov | +0.038 | -61% | -78% | 0.633 |
-| HRP_TailDepShrunk | +0.032 | -62% | -78% | 0.633 |
-| HRP_Detoned | +0.023 | -64% | -79% | 0.690 |
-| MOM_HRP | -0.015 | -73% | -85% | 0.703 |
-| ERC | -0.026 | -71% | -81% | 0.283 |
-| RM_MOM (fixed) | -0.160 | -19% | **-33%** | 0.170 |
-| CS_MOM_eq21 | -0.161 | -83% | -87% | 0.177 |
-| MaxDiv | -0.163 | -83% | -89% | 0.233 |
-| HODL_BTC | -0.492 | n/a | --- | 0.267 |
-
-### 10.2 Regime sensitivity (paper-grade finding)
-
-**Excluding the COVID bull run completely changes the story:**
-
-| Metric | 2020-2026 (incl COVID) | 2022-2026 (post-COVID) |
-|---|---|---|
-| HRP Sharpe | 0.741 (+418% total) | **0.047** (-60% total) |
-| Best HRP-family variant | HRP_Dynamic 0.749 | HRP_Dynamic 0.099 |
-| MVP Sharpe | 1.057 (+2867%) | 0.482 (+66%) |
-| MaxDiv Sharpe | 0.719 (+364%) | **-0.163** (-83%) |
-| ERC Sharpe | 0.663 (+233%) | **-0.026** (-71%) |
-| CS_MOM Sharpe | 0.663 (+217%) | **-0.161** (-83%) |
-| Number of strategies with negative Sharpe | 0 of 19 | **5 of 19** |
-
-**Two findings worth headlining:**
-
-1. **In a "normal" (non-COVID-bull) crypto market, diversification is a
-   losing proposition on this universe.** All risk-based HRP variants
-   lost ~60% over 2022-2026 with near-zero risk-adjusted return. Only
-   MVP — which essentially concentrates 60-80% in BTC — produced
-   positive total return. The 2020-2026 "diversification works" finding
-   was largely a COVID-rally artifact.
-
-2. **Embedding variants directionally LEAD baseline HRP in post-COVID
-   data** (HRP_Contrastive +0.024 Sharpe vs HRP, HRP_PathSig +0.008,
-   HRP_NodeEmbed +0.011, HRP_TS2Vec +0.004 — all positive). The sign
-   flips from the bull-period analysis (where all 4 embeddings were
-   negative vs HRP). Not statistically significant individually (LW
-   p > 0.5 for all), but the directional reversal suggests embeddings
-   may capture risk structure more relevant in challenging regimes
-   than in monotone bull markets.
-
-3. **RM_MOM (the bug-fixed version) shows its defensive value**:
-   Sharpe -0.16 (poor) but MaxDD only -33% (vs other momentum's -87%).
-   The cash-residual de-risking saved it from the worst drawdowns.
-   This is exactly what Barroso & Santa-Clara's framework is designed
-   to do; the original buggy implementation hid this property.
-
-Hansen SPA on post-COVID data: p_consistent = 0.483, p_upper = 0.870.
-Still cannot reject "no strategy beats HRP", but the **studentised
-scores reverse**: in post-COVID, HRP_Dynamic_94 (+1.34), HRP_Contrastive
-(+0.70), MVP (+1.38), HODL_BTC (+1.10), HRP_NodeEmbed (+0.32),
-HRP_PathSig (+0.24), HRP_TS2Vec (+0.12) are all positive (above
-baseline), while in the full-window analysis nearly all HRP variants
-had negative or near-zero scores.
-
-### 10.3 Artifacts (Phase 8d, post-COVID)
+# Spec 03 — Backtest v2
+
+**Status:** Current contract for the final committed backtest artifacts
+
+## 1. Scope
+
+This spec defines the backtest protocol that underlies the final
+committed result artifacts used by the UCEMA journal paper.
+
+It supersedes earlier broader design drafts that included additional
+candidate strategies and alternative universe configurations not present
+in the final committed headline outputs.
+
+## 2. Current Committed Universe and Data
+
+The backtest consumes the committed PIT artifact defined in
+`specs/08_universe.md`.
+
+Current committed state:
+
+- PIT source artifact: `data/pit_universe.csv`
+- PIT artifact summary: `146` ever-included symbols, `97` dropped during
+  the window, `100` monthly snapshots
+- Strategy evaluation window: `2020-01-01` to `2026-05-18`
+- Headline monthly-rebalance window: `76` rebalance snapshots
+- Underlying price inputs used by the committed rerun scripts:
+  - `data/binance_usdt_pairs_2018-12-31_2024-01-01_1d.csv`
+  - `data/binance_pit_supplement_2019-2024_1d.csv`
+
+## 3. Estimation and Rebalance Protocol
+
+### 3.1 Estimation window
+
+- Rolling lookback: `365` days
+- Per-asset minimum observations: `180` daily returns
+
+Assets failing the minimum-observation filter are dropped from that
+snapshot's estimation universe.
+
+### 3.2 Rebalance logic
+
+The backtest engine supports:
+
+1. `calendar`
+2. `threshold`
+3. `threshold_smoothed`
+
+The headline paper uses the monthly calendar-rebalanced comparison.
+
+### 3.3 Cost model
+
+The committed implementation uses a **stylized flat turnover-based cost
+model**:
+
+- cost = `(fee_bps + slippage_bps) * L1 turnover`
+- exiting-universe liquidations receive a `2x` liquidation premium
+
+This is a coarse transaction-cost sensitivity model, not a full
+liquidity-aware market-impact model.
+
+## 4. Final Comparison Set
+
+### 4.1 Constructed strategies in the committed final comparison
+
+The final committed comparison set contains `22` constructed strategies:
+
+1. `HRP`
+2. `HRP_Detoned`
+3. `HRP_PartialCorr`
+4. `HRP_Dynamic_94`
+5. `HRP_TailDep`
+6. `HRP_TailDepShrunk`
+7. `HRP_ShrunkCov`
+8. `HRP_VolStd`
+9. `IVP`
+10. `MVP`
+11. `ERC`
+12. `MaxDiv`
+13. `CS_MOM_eq21`
+14. `RM_MOM`
+15. `MOM_HRP`
+16. `HERC`
+17. `NCO`
+18. `HRP_PathSig`
+19. `HRP_NodeEmbed`
+20. `HRP_Contrastive`
+21. `HRP_TS2Vec`
+22. `NCO_RT`
+
+### 4.2 Passive benchmark
+
+The headline comparison also includes:
+
+- `HODL_BTC`
+
+It is a benchmark line in the paper and result CSVs, not a constructed
+portfolio strategy.
+
+## 5. Artifact Generation Path
+
+The final committed headline artifacts are produced in two steps:
+
+1. `scripts/rerun_all.py`
+   - generates the main 21-strategy panel and the base inference outputs
+2. `scripts/add_nco_rt.py`
+   - appends `NCO_RT`
+   - refreshes the final headline/post-COVID/weekly outputs and
+     associated inference files
+
+This two-step generation path is part of the current contract unless the
+pipeline is later unified.
+
+## 6. Metrics and Output Conventions
+
+### 6.1 Headline result CSV
+
+`data/backtest_v2_rebalance_results.csv` stores per-series summary
+metrics, including:
+
+- `total_return`
+- `ann_return`
+- `ann_vol`
+- `sharpe`
+- `sortino`
+- `max_drawdown`
+- `calmar`
+- `n_days`
+- `arith_sharpe_ann`
+- turnover/cost/concentration diagnostics
+
+### 6.2 Sharpe conventions
+
+Two Sharpe-style quantities coexist in the committed artifacts:
+
+1. `sharpe`
+   - CAGR-style annualized return divided by annualized volatility
+2. `arith_sharpe_ann`
+   - arithmetic mean divided by standard deviation times `sqrt(365)`
+
+The paper's headline tables display the arithmetic Sharpe convention.
+
+### 6.3 Inference alignment convention
+
+Joint inference is computed on the **common aligned panel** across the
+compared daily-return series.
+
+This aligned panel is slightly shorter than some per-strategy daily
+series once `HODL_BTC` is included.
+
+## 7. Current Committed Outputs
+
+- `data/backtest_v2_rebalance_results.csv`
+- `data/backtest_v2_daily_returns.pkl`
+- `data/inference_sharpe_diff.csv`
+- `data/inference_spa.csv`
+- `data/inference_bootstrap_cis.csv`
+- `data/backtest_v2_cost_sensitivity.csv`
+- `data/backtest_v2_threshold_results.csv`
 - `data/backtest_v2_post_covid_results.csv`
-- `data/inference_post_covid_bootstrap_cis.csv`
+- `data/backtest_v2_post_covid_daily_returns.pkl`
 - `data/inference_post_covid_sharpe_diff.csv`
 - `data/inference_post_covid_spa.csv`
+- `data/backtest_v2_weekly_results.csv`
+- `data/backtest_v2_weekly_daily_returns.pkl`
+- `data/inference_weekly_spa.csv`
 
-The 2020-2026 artifacts (§9.2 above) are kept as the headline; the
-post-COVID artifacts are the regime-sensitivity check. The paper
-should report BOTH side by side.
+## 8. Acceptance Criteria
 
----
+AC1. The spec, `README.md`, `paper/ucema_journal/README.md`, and the
+committed artifacts describe the same final comparison set.
 
-## 11. Phase 5b artifacts (historical, kept for traceability):
-- `data/backtest_v2_threshold_results.csv` — 15 rows (5 strats × 3 scenarios)
-- `data/backtest_v2_static_results.csv` — 13 rows (Scenario A static)
-- `data/cluster_stability.csv` — 76 rows per-snapshot cluster diagnostics
-- `data/backtest_v2_rebalance_results.csv` — expanded to 19 strategies (was 12)
+AC2. The two-step generation path (`rerun_all.py` then `add_nco_rt.py`)
+is documented wherever reproduction instructions are shown.
+
+AC3. The paper's headline performance discussion is traceable to
+`data/backtest_v2_rebalance_results.csv`.
+
+AC4. The paper's inference discussion is traceable to the committed
+`data/inference_*.csv` files and the aligned-panel convention is stated.
+
+AC5. The cost-model description is aligned with the actual flat
+turnover-based implementation unless the implementation changes.

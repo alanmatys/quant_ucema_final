@@ -9,7 +9,7 @@ Each spec follows the same template: **Motivation → Requirements → Interface
 |---|------|---------|
 | 01 | [Denoising](01_denoising.md) | Marchenko–Pastur eigenvalue denoising; `HRPDenoised` |
 | 02 | [Detoning](02_detoning.md) | Market-mode removal; `HRPDetoned` |
-| 03 | [Backtest v2](03_backtest_v2.md) | Unified backtest protocol — 20 strategies, 4 scenarios (static, monthly, threshold, smoothed), 4 cost grids |
+| 03 | [Backtest v2](03_backtest_v2.md) | Current committed backtest contract for the final headline artifacts |
 | 04 | [Paper](04_paper.md) | Continuation-paper outline (UCEMA journal) — 25–35 pages |
 | 05 | [Cleanup](05_cleanup.md) | Repo hygiene — branches, stash, duplicate folders |
 | 06 | [HRP Variants](06_hrp_variants.md) | `HRPPartialCorr`, `HRPDynamic`, `HRPTailDep` |

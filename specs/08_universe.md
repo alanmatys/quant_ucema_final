@@ -1,206 +1,103 @@
 # Spec 08 — Point-in-Time Universe Reconstruction
 
-**Status:** Draft
-**Owner:** Alan Matys, Federico Rodriguez
-**Blocks:** [03_backtest_v2.md](03_backtest_v2.md) (universe must be PIT before backtest is run)
+**Status:** Current contract for the final committed PIT artifact
 
----
+## 1. Scope
 
-## 1. Motivation
+This spec defines the point-in-time universe used by the final committed
+backtest artifacts and the UCEMA journal paper.
 
-The current dataset
-[data/binance_usdt_pairs_2018-12-31_2024-01-01_1d.csv](../data/binance_usdt_pairs_2018-12-31_2024-01-01_1d.csv)
-contains only pairs that **survived** to the data-collection date in January
-2024. This embeds two biases that any reviewer will flag:
+It supersedes earlier top-30 / 2019-2024 drafts. Historical notes about
+CoinGecko-based or smaller-universe variants are no longer the active
+contract.
 
-- **Survivorship bias** — failed/delisted tokens (Terra/LUNA, FTT, dozens of
-  smaller dead pairs) are absent, inflating measured returns.
-- **Look-ahead in universe selection** — using today's market-cap rankings to
-  pick assets implicitly uses information not available at the rebalance date.
+## 2. Current Artifact State
 
-A point-in-time (PIT) reconstruction rebuilds the universe **as it existed at
-each monthly rebalance date**, including assets that subsequently failed.
+The committed artifact `data/pit_universe.csv` reflects:
 
-**Methodology note (revised after R4 dry-run):** the original spec required
-CoinGecko historical market cap as the ranking signal. CoinGecko's free demo
-tier caps history at 365 days, and paid plans start at $129/mo — out of scope
-for this paper. We instead rank by **rolling 30-day Binance USDT quote volume**,
-a *tradable-liquidity* proxy that is (a) free, (b) available for the full
-2019-2024 window, (c) more directly aligned with the paper's contribution
-(constructing portfolios that could actually have been traded), and (d) a
-standard liquidity proxy in academic crypto research. The methodological shift
-is documented in the paper and cited as a deliberate choice, not a workaround.
-A market-cap robustness check using Pro CoinGecko is reserved as future work.
+- Snapshot range: `2018-02-28` to `2026-05-31`
+- `100` monthly snapshots
+- `146` ever-included symbols
+- `97` symbols dropped during the window
+- steady-state included universe near `49-51` names
 
-**Phase 4.5 dataset expansion (2026-05-18):** dataset window extended to
-the full available Binance history. Now spans **2017-08-17 → 2026-05-18**
-(roughly 9 years vs. the original 5). Candidate pool expanded again with
-12 prominent 2024-2025 listings (JUP, ENA, PYTH, ORDI, SUI, SEI, JTO,
-BONK, WIF, DYM, STRK, MANTA) for a total of **91 unique symbols** in the
-dataset and **87 ever-included** symbols in the PIT universe. **38 assets
-dropped during the window** (vs 27 before), further amplifying the
-survivorship-bias fix. 100 monthly snapshots (vs 56 before).
+This is the authoritative PIT universe for the current paper draft.
 
-**Estimation-window guidance for the backtest:** several newer assets
-(JUP, ENA, WIF, …) are admitted to the PIT universe via the 180-day
-age filter but don't have 730 days of history yet at the time of
-inclusion. Backtest v2 must use a 365-day estimation window (not 730)
-with a per-asset min-periods filter (require ≥ 180 daily observations
-per asset; drop assets failing this from the snapshot's strategy
-universe). On a 2025-12-31 smoke test all 48 included assets passed
-the 180-day filter with 365-day lookback — the constraint binds for
-newer entrants only.
+## 3. Method
 
-**Empirical finding (Phase 3.5, 2022-12-31 snapshot, going from N=27 → N=41
-by raising top_n from 30 to 50 and adding 15 new candidates):**
-- Spearman(HRP, HRP_VolStd) collapsed from 0.842 → **0.445**. Vol-standardization
-  was essentially a no-op at N=27 (top-tier majors share similar vol scale);
-  at N=41 it produces meaningfully different weights because mid-tier altcoins
-  with high vol get re-weighted.
-- Pairs sharing topology source remain near-perfect Spearman:
-  HRP_Detoned vs HRP_PartialCorr = 0.995, HRP_TailDep vs HRP_TailDepShrunk = 0.999.
-  These convergences are **structural**, not small-N artifacts.
-- LW shrinkage intensity dropped: 0.094 (N=27) → 0.051 (N=41). With more
-  observations relative to assets, the sample covariance is better conditioned
-  and needs less shrinkage. Reasonable behaviour confirming the LW estimator
-  is responding to T/N as expected.
+### 3.1 Ranking signal
 
-Operational note: at N≥40, `HRP_PartialCorr`'s GraphicalLasso may emit
-`slogdet` warnings. Tuning `alpha` from 0.05 to 0.10 stabilizes it. The
-weights remain valid in both cases but the warnings should be addressed
-in the Backtest v2 implementation.
+Universe membership is based on **rolling 30-day Binance USDT quote
+volume** as a tradable-liquidity proxy.
 
-## 2. Requirements
+The active implementation computes this signal as a **rolling mean** of
+daily quote volume per symbol before month-end snapshotting.
 
-R1. **Monthly universe snapshots** spanning Jan 2019 → Dec 2023, one per
-    rebalance date.
+### 3.2 Selection rules
 
-R2. **Selection criteria** (applied at each snapshot date):
-   - Top **50** by **rolling 30-day Binance USDT quote volume** on the snapshot date.
-     (Revised from top-30 after the Phase 3.5 N-sensitivity smoke test
-     established that several variants — notably `HRP_VolStd` — only
-     differentiate from vanilla HRP once the universe is large enough to
-     include meaningfully heterogeneous vol scales. See empirical-findings
-     note at end of §1.)
-   - Minimum age: 180 days of price history at that date.
-   - Minimum median daily USD volume over the prior 30 days: $1M.
-   - Excluded: stablecoins, wrapped tokens (WBTC, stETH, etc.), leveraged/inverse
-     tokens, exchange tokens of the venue used for execution (avoid endogeneity).
-   - Tradable on Binance USDT spot as of the snapshot date.
+At each monthly snapshot:
 
-R3. **Entry/exit buffer** to avoid churn:
-   - An asset entering top 30 enters the universe only after 2 consecutive
-     monthly snapshots above the threshold.
-   - An asset leaving top 30 stays in the universe for 1 additional snapshot
-     before being removed.
+1. Exclude stablecoins, wrappers/liquid-staking derivatives, leveraged
+   tokens, and venue-native exchange tokens.
+2. Require at least `180` days of observed history.
+3. Require at least `USD 1M` on the rolling 30-day quote-volume signal.
+4. Apply manual listing/delisting constraints from
+   `data/binance_listings_manual.json` when coverage exists.
+5. Rank eligible symbols by rolling 30-day quote volume.
+6. Take the top `50` candidates.
+7. Apply entry/exit buffers:
+   - enter after `2` consecutive candidate months,
+   - exit after `1` additional month outside the candidate set.
 
-R4. **Data sources:**
-   - Historical market-cap rankings: **CoinGecko historical data**
-     (free API; demo tier rate-limited to ~30 calls/min — accept the slower
-     ingestion).
-   - Historical price/volume: extend existing Binance ingestion to fetch all
-     pairs that were ever in the universe, including currently-delisted ones
-     (Binance historical data endpoint provides this).
-   - Cross-reference Binance USDT listing/delisting dates from Binance
-     announcements (manual JSON file, committed to repo) for the small number
-     of high-impact delistings (LUNA, FTT, etc.).
+## 4. Manual Listings File
 
-R5. **Failed-token handling:**
-   - When a token is delisted, the position is liquidated at the last available
-     price.
-   - Liquidation slippage modeled as **2× normal slippage** in the cost model
-     (per Spec 03 amended).
+`data/binance_listings_manual.json` is **sparse by design**.
 
-R6. **Reproducibility:** the PIT universe is built by a deterministic notebook
-    that produces a single artifact `data/pit_universe.csv` with columns
-    `[date, symbol, market_cap, volume_30d, included]`. (Originally specified as
-    parquet; downgraded to CSV because the artifact is small — ≪1MB — and
-    avoiding the `pyarrow` dependency keeps the bootstrap simple.)
+It covers symbols where listing or delisting timing is expected to matter
+materially for the PIT universe. Symbols not included in that file are
+treated as tradable throughout the relevant historical window unless the
+price dataset itself implies otherwise.
 
-## 3. Interface
+This is an explicit simplifying assumption and should be acknowledged in
+paper-facing methodology text.
 
-### 3.1 `src/universe.py` (new module)
+## 5. Builder Status
+
+The authoritative final builder is:
+
+- `scripts/build_pit_universe_final.py`
+
+The committed notebook `notebooks/build_pit_universe.ipynb` contains an
+older top-30 / 2019-2024 build path and should be treated as historical
+context unless updated to wrap the final builder logic.
+
+## 6. Active Interface
+
+The active implementation lives in `src/universe.py` and exposes:
 
 ```python
-def fetch_historical_market_caps(start: str, end: str,
-                                  top_n: int = 100) -> pd.DataFrame:
-    """Fetch monthly market-cap rankings from CoinGecko historical API."""
-
-def build_pit_universe(market_caps: pd.DataFrame,
-                       binance_listings: pd.DataFrame,
-                       price_history: pd.DataFrame,
-                       top_n: int = 30,
-                       min_age_days: int = 180,
-                       min_median_volume_usd: float = 1e6,
-                       exclude_patterns: list[str] = None,
-                       entry_buffer_months: int = 2,
-                       exit_buffer_months: int = 1) -> pd.DataFrame:
-    """Build the monthly point-in-time universe DataFrame."""
-
-def load_pit_universe(path: str = "data/pit_universe.csv") -> pd.DataFrame:
-    """Load the built PIT universe artifact."""
+def load_candidates(...)
+def load_binance_listings(...)
+def fetch_binance_extended_prices(...)
+def to_monthly_snapshots(...)
+def build_pit_universe(...)
+def load_pit_universe(...)
+def summarize_pit_universe(...)
 ```
 
-### 3.2 Notebook
+## 7. Acceptance Criteria
 
-`notebooks/build_pit_universe.ipynb` — calls the three functions above,
-saves `data/pit_universe.csv` and a human-readable
-`data/pit_universe_summary.csv` for review.
+AC1. `data/pit_universe.csv` remains the authoritative committed PIT
+artifact for the paper unless explicitly regenerated and versioned.
 
-### 3.3 Data artifacts
+AC2. No included row may occur before `listed_at` for symbols covered by
+`data/binance_listings_manual.json`.
 
-```
-data/coingecko_market_caps_monthly.csv           # Raw market-cap ingestion (cached)
-data/coingecko_candidates.json                   # Candidate coin list (hand-curated)
-data/binance_listings_manual.json                # Hand-curated listing/delisting
-data/pit_universe.csv                            # The PIT universe (committed)
-data/pit_universe_summary.csv                    # Human-readable summary (committed)
-data/binance_usdt_pairs_pit_2019-2024_1d.csv     # Extended price CSV including
-                                                  # delisted pairs (committed)
-```
+AC3. No included row may occur after `delisted_at` for symbols covered by
+`data/binance_listings_manual.json`.
 
-## 4. Acceptance Criteria
+AC4. The spec, implementation comments, and paper-facing universe
+description all refer to the same top-50 expanded PIT design.
 
-AC1. PIT universe contains at least one asset that was subsequently delisted
-     (e.g. LUNA in 2022) — confirms the bias fix is real, not cosmetic.
-
-AC2. Median universe size per snapshot is 30 ± 3 (entry/exit buffers prevent
-     exact-30 lock).
-
-AC3. No stablecoins (verified against an explicit exclusion list including
-     USDT, USDC, BUSD, DAI, TUSD, USDP, GUSD, FRAX, USDD, FDUSD, PYUSD, USDe).
-
-AC4. Each asset's first appearance is at least 180 days after its earliest
-     observed price (age constraint enforced).
-
-AC5. Notebook runs end-to-end on a clean kernel; PIT universe regenerable from
-     committed inputs.
-
-AC6. Aggregate summary: ≥10 distinct assets present in the universe at some
-     point that are NOT present at the end date (proves survivorship is
-     actually being addressed).
-
-## 5. Out of Scope
-
-- Tick-level or intraday data ingestion.
-- Cross-venue listing arbitrage (single venue = Binance for execution).
-- Manual reconstruction of pre-2019 universe (LUNA-1, BCH fork details, etc.).
-- Glassnode/Kaiko paid-tier integration (rejected per deep-research review
-  scope discussion).
-
-## 6. References
-
-- CoinGecko API documentation: https://www.coingecko.com/en/api/documentation
-- Binance public delisting announcements (manual collection).
-- Han, Y., et al. (2024). Realistic-assumption momentum in cryptocurrency — flags
-  survivorship as a recurring bias source.
-
-## 7. Open Questions
-
-OQ1. **Top-30 vs Top-20 vs Top-40** — pick one for headline results; report
-     others as robustness. **Recommended: Top-30** (matches typical academic
-     crypto papers).
-
-OQ2. Should CoinGecko historical data be cached locally given rate limits?
-     **Recommended: yes**, commit a frozen snapshot to the repo so the build is
-     fully reproducible offline.
+AC5. `scripts/build_pit_universe_final.py` reproduces the committed
+artifact or fails loudly on mismatch.

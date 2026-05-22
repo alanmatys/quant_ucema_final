@@ -221,7 +221,7 @@ def to_monthly_snapshots(prices: pd.DataFrame) -> pd.DataFrame:
 
     Returns:
         DataFrame with [snapshot_date, symbol, rolling_quote_vol_30d, first_seen, close].
-        rolling_quote_vol_30d is the median of the prior 30 daily quote volumes.
+        rolling_quote_vol_30d is the rolling mean of the prior 30 daily quote volumes.
     """
     df = prices[["open_time", "symbol", "close", "quote_volume"]].copy()
     df = df.sort_values(["symbol", "open_time"])
@@ -250,7 +250,7 @@ def to_monthly_snapshots(prices: pd.DataFrame) -> pd.DataFrame:
 
 def build_pit_universe(
     monthly: pd.DataFrame,
-    top_n: int = 30,
+    top_n: int = 50,
     min_age_days: int = 180,
     min_median_volume_usd: float = 1_000_000.0,
     excluded_symbols: set[str] | None = None,
@@ -262,7 +262,7 @@ def build_pit_universe(
 
     At each snapshot date:
       1. Drop excluded symbols (stables, wrappers, exchange tokens).
-      2. Apply age + 30d-median-volume + listing/delisting window filters.
+      2. Apply age + rolling-30d-volume + listing/delisting window filters.
       3. Take top-N by rolling quote volume as the "candidate" set.
       4. Apply entry buffer (must be candidate for K consecutive months to enter)
          and exit buffer (stays in M months after dropping below).
@@ -271,7 +271,9 @@ def build_pit_universe(
         monthly: DataFrame from `to_monthly_snapshots` — uses pair symbols (e.g. BTCUSDT).
         top_n: number of top-volume symbols per snapshot.
         min_age_days, min_median_volume_usd, excluded_symbols, *_buffer_months:
-            Spec 08 R2/R3.
+            `min_median_volume_usd` is a legacy argument name retained for
+            compatibility; the current signal is the rolling 30-day quote-volume
+            measure computed in `to_monthly_snapshots`.
         binance_listings: optional mapping from `load_binance_listings`; if a symbol
             has a listed_at later than snapshot_date or a delisted_at earlier than
             snapshot_date, it's filtered out.

@@ -24,7 +24,7 @@
 \author[1]{Federico Martin Rodriguez}
 \affil[1]{Universidad del CEMA \\ \texttt{alan.matys92@gmail.com}, \texttt{federico.m.rodriguez.h@gmail.com}}
 
-\date{\today}
+\date{May 2026}
 
 \begin{document}
 \maketitle
@@ -34,7 +34,7 @@
 We extend the MACI 2025 study of Hierarchical Risk Parity (HRP) for
 cryptocurrency portfolios. We close the two future-work items of that
 paper --- Marchenko--Pastur denoising and spectral detoning --- and
-broaden the comparison to 22 portfolio strategies: twelve HRP-family
+broaden the comparison to 22 constructed portfolio strategies: twelve HRP-family
 variants (the baseline; seven correlation/covariance constructions; and
 four embedding-based variants that learn the clustering distance from
 path signatures, a graph embedding and two contrastive sequence
@@ -58,7 +58,7 @@ significant (Ledoit--Wolf $p=0.22$; headline SPA
 $p_{\text{consistent}}=0.41$). A power analysis explains the gap: on this
 6.3-year sample a structurally distinct strategy must beat HRP by
 $\approx 0.4$--$0.8$ annualised Sharpe to be detected at 80\% power, so
-NCO's economically large edge is statistically invisible. Tilting NCO
+NCO's positive but statistically unresolved edge remains uncertified. Tilting NCO
 toward an estimated-return objective \emph{destroys} it ($-97\%$ total
 return) --- a textbook demonstration of the estimation-error curse that
 motivates risk-based allocation. A passive 100\% BTC hold (Sharpe 0.87)
@@ -111,9 +111,8 @@ the comparison in three other directions.
       Optimization \citep{lopezdeprado2019nco}, and a return-tilted NCO
       (\S\ref{sec:methods-comparators}) --- the test of whether the
       clustering step or the allocation step is what matters. ERC
-      \citep{maillard2010erc}, Maximum Diversification
-      \citep{choueifaty2008maxdiv} and Network Risk Parity
-      \citep{ciciretti2024nrp} serve as risk-based comparators.
+      \citep{maillard2010erc} and Maximum Diversification
+      \citep{choueifaty2008maxdiv} serve as risk-based comparators.
 \item \textbf{Crypto-momentum strategies.} Cross-sectional momentum,
       risk-managed momentum \citep{barroso2015momentum}, and a
       Momentum$+$HRP hybrid, parameter-tuned for crypto's faster
@@ -339,12 +338,9 @@ embedding number reflects the embedding pipeline itself.
 \paragraph{Risk-based comparators.}
 \textbf{IVP} (inverse-variance), \textbf{MVP} (minimum-variance via SLSQP),
 \textbf{ERC} \citep{maillard2010erc} (solved by SLSQP minimisation of
-squared deviations from equal risk contributions), \textbf{Maximum
+squared deviations from equal risk contributions), and \textbf{Maximum
 Diversification} \citep{choueifaty2008maxdiv} (SLSQP maximisation of
-the diversification ratio), and \textbf{Network Risk Parity}
-\citep{ciciretti2024nrp} (MST built from correlation distance,
-weights inversely proportional to the product of asset volatility and
-$1+\deg_i$).
+the diversification ratio).
 
 \paragraph{Nested-clustering optimisers.} HRP and all its variants change
 only the \emph{dendrogram}; the within-cluster allocation stays inverse-
@@ -513,10 +509,13 @@ and snapshot $t-1$, cut at $K=5$ clusters via \texttt{fcluster}.
 
 \subsection{Scenario B headline performance}
 
-Table~\ref{tab:scenarioB} reports the 22-strategy comparison under
+Table~\ref{tab:scenarioB} reports the headline comparison under
 monthly rebalancing with conservative CEX costs over 2020-02
-through 2026-05-18 (76 rebalances, 2{,}297 daily out-of-sample
-observations). Figures~\ref{fig:cum_b} and \ref{fig:risk_return}
+through 2026-05-18. The strategy return panel contains 2{,}299 daily
+observations for the PIT-traded strategies; once the passive
+HODL\_BTC benchmark is included, the common aligned panel used for the
+Ledoit--Wolf and Hansen SPA inference contains 2{,}297 observations.
+Figures~\ref{fig:cum_b} and \ref{fig:risk_return}
 visualise the equity curves and the risk--return positioning.
 
 \begin{table}[H]
@@ -610,9 +609,10 @@ opposite: replacing the minimum-variance steps with momentum-driven
 maximum-Sharpe steps turns it into a 164\%-turnover momentum-chaser that
 loses 97\% of capital --- a clean demonstration of the estimation-error
 curse that risk-based allocation exists to avoid. The contrast is the
-paper's sharpest single result: \emph{changing the clustering step does
-nothing; changing the allocation step is what moves performance --- in
-either direction.}
+paper's sharpest single result: within this dataset, horizon, and
+search space, changing the clustering step did not produce a detectable
+outperformance over baseline HRP, whereas changing the allocation step
+did move performance --- in either direction.
 
 \paragraph{Embedding variants.} The four embedding-based HRP variants
 --- \texttt{HRP\_PathSig} (path signatures; \citealp{lyons1998}),
@@ -769,7 +769,7 @@ hyperparameters.
     Path signatures, multi-channel$^{\dagger}$     & 72  & ret+vol+trades, L2          & 0.747 & $+0.005$ & $+432\%$ \\
     Contrastive / TS2Vec, multi-channel            & 24  & ret+vol+trades              & 0.739 & $-0.002$ & $+412\%$ \\
     \midrule
-    \textit{Baseline HRP} (single linkage)         & ---  & ---                        & 0.741 & ---      & $+418\%$ \\
+    \textit{Baseline HRP} (single linkage)         & ---  & ---                        & 0.741 & ---      & $+417\%$ \\
     \bottomrule
   \end{tabular}
 
@@ -949,7 +949,7 @@ works'' framing was largely a COVID-rally artifact. Honest framing:
 \emph{HRP diversifies risk but does not produce capital appreciation
 in non-bull crypto regimes}.
 
-\textbf{(2) NCO's edge is not a pure bull-market artefact.} NCO loses
+\textbf{(2) NCO's edge is not obviously only a bull-market artefact.} NCO loses
 only 4\% of capital post-COVID against baseline HRP's 60\%, and its
 post-COVID Sharpe ($0.264$) trails only the two outright-concentration
 plays, HODL\_BTC and MVP. Whatever NCO is doing --- concentrating into
@@ -958,7 +958,8 @@ low-volatility assets through nested minimum variance --- helps in
 evidence in the paper that an \emph{allocation} choice, rather than
 luck, separates a constructed portfolio from the HRP pack; that the
 edge is still not statistically significant (\S\ref{sec:results-power})
-is a limitation of sample size, not of the effect.
+is consistent with limited power under the current design, leaving the
+effect unresolved rather than established.
 
 \textbf{(3) Embedding variants partially reverse against baseline HRP
 in the harder regime.} In the full window all four embedding variants
@@ -968,7 +969,7 @@ post-COVID window three of the four edge \emph{above} baseline HRP ---
 \texttt{HRP\_TS2Vec} ($+0.000$) --- while \texttt{HRP\_NodeEmbed}
 ($-0.015$) stays below. None reaches individual significance (all
 Ledoit--Wolf $p>0.6$) and the margins are tiny, but the partial
-directional reversal is suggestive: the path- and sequence-based
+directional reversal is tentative: the path- and sequence-based
 embeddings may capture risk structure that matters more in a choppy
 regime than in a monotone rally. A longer post-COVID sample would be
 needed to tell.
@@ -1017,7 +1018,9 @@ The cost grid (Figure~\ref{fig:cost_sens}) shows annualised-Sharpe
 shifts under $0.01$ across the four cost scenarios for all five
 strategies tested --- e.g.\ baseline HRP moves from $0.749$ (zero cost)
 to $0.740$ (stress). Monthly-cadence transaction costs do not drive
-strategy differentiation on this dataset.
+strategy differentiation on this dataset. This is a stylized flat
+turnover-based sensitivity model with a liquidation premium, not a full
+liquidity-impact execution model.
 
 \begin{figure}[H]
   \centering
@@ -1079,9 +1082,9 @@ across clusters) to a forgettable $0.71$, and the return-tilted NCO to
 a $-97\%$ catastrophe. HRP and all its variants share one allocation
 rule --- inverse-variance recursive bisection --- and that rule, not
 the dendrogram, is what pins the family together. For practitioners the
-implication is concrete: time spent engineering a better distance
-metric or a learned embedding is, on this evidence, time wasted; the
-allocation objective is where the degrees of freedom that matter live.
+implication is narrower: on the evidence in this study, additional
+effort on the clustering step appears lower-yield than effort on the
+allocation step.
 
 \subsection{Why does Hansen SPA fail to reject --- even for NCO?}
 NCO posts a $+0.19$ Sharpe edge over HRP that holds in both the full
@@ -1094,7 +1097,7 @@ $\approx0.4$--$0.8$ annualised Sharpe to be detected at 80\% power;
 NCO's $+0.19$, and even MVP's $+0.31$, fall below that threshold. The
 honest reading of the null is therefore precise: \emph{no strategy
 beats HRP by an edge this design can resolve} --- which, given the
-power floor, leaves NCO's economically meaningful edge an open
+power floor, leaves NCO's positive observed edge an open
 question rather than a refuted one.
 
 \subsection{Detoning hurts in BTC-led regimes}
@@ -1109,7 +1112,7 @@ regime-dependent, not a universal Sharpe improvement.
 A passive 100\% BTC hold (Sharpe $0.87$, $+749\%$) beats every
 \emph{diversified} portfolio in the comparison; the only constructed
 strategies above it --- MVP and NCO --- get there by concentrating back
-into BTC. This is the uncomfortable finding the paper must not soften:
+into BTC. This is an uncomfortable finding:
 over 2020--2026, diversification in cryptocurrency paid a cost in
 foregone BTC upside that the lower drawdowns of diversified portfolios
 did not recover. It is a statement about the regime --- a single asset
@@ -1142,7 +1145,7 @@ so far been a second-order effect dwarfed by the BTC beta.''
 \label{sec:conclusion}
 %% ===========================================================================
 
-We evaluated 22 portfolio strategies --- twelve HRP-family variants
+We evaluated 22 constructed portfolio strategies --- twelve HRP-family variants
 (the baseline, seven correlation/covariance constructions, four
 embedding-based variants), four risk-based comparators, three
 nested-clustering optimisers, and three momentum strategies --- on a
@@ -1153,7 +1156,8 @@ test and the reference Hansen SPA.
 
 The central finding is a contrast between two design choices. The
 \emph{clustering} step --- which correlation, distance, linkage or
-learned embedding builds the dendrogram --- does not matter: across a
+learned embedding builds the dendrogram --- did not produce a detectable
+outperformance over baseline HRP in this study: across a
 547-cell hyperparameter grid no configuration escapes the HRP-family
 Sharpe band, and the combined Hansen SPA cannot reject the null
 ($p_{\text{consistent}}=0.91$). The \emph{allocation} step does matter:
