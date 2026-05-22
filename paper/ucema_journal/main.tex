@@ -34,8 +34,8 @@
 We extend the MACI 2025 study of Hierarchical Risk Parity (HRP) for
 cryptocurrency portfolios. We close the two future-work items of that
 paper --- Marchenko--Pastur denoising and spectral detoning --- and
-broaden the comparison to 22 constructed portfolio strategies: twelve HRP-family
-variants (the baseline; seven correlation/covariance constructions; and
+broaden the comparison to 23 constructed portfolio strategies: thirteen HRP-family
+variants (the baseline; eight correlation/covariance constructions; and
 four embedding-based variants that learn the clustering distance from
 path signatures, a graph embedding and two contrastive sequence
 encoders); four risk-based comparators (IVP, MVP, ERC, Maximum
@@ -45,7 +45,7 @@ comparison runs on a survivorship-bias-corrected, point-in-time Binance
 universe (146 ever-included symbols, delisted assets such as LUNA and
 FTT included) and is wrapped in the reference Hansen Superior Predictive
 Ability test and a studentized Ledoit--Wolf Sharpe-difference test.
-On 76 monthly rebalances over 2020-02 to 2026-05 the twelve HRP-family
+On 76 monthly rebalances over 2020-02 to 2026-05 the thirteen HRP-family
 variants bunch in a narrow annualised-Sharpe band (0.70--0.75): no
 correlation, distance, linkage or embedding choice --- across an
 exhaustive 547-cell hyperparameter grid --- separates from baseline HRP
@@ -542,6 +542,7 @@ HRP\_PartialCorr         & 0.720 & +366\%  & 0.24 & 0.477\\
 MaxDiv                   & 0.719 & +364\%  & 0.55 & 0.919\\
 HRP\_PathSig             & 0.714 & +351\%  & 0.38 & 0.277\\
 HERC                     & 0.712 & +333\%  & 0.57 & 0.783\\
+HRP\_Denoised            & 0.712 & +346\%  & 0.33 & 0.111\\
 HRP\_Contrastive         & 0.710 & +341\%  & 0.40 & 0.238\\
 HRP\_Detoned             & 0.708 & +334\%  & 0.26 & 0.403\\
 HRP\_TailDep             & 0.708 & +337\%  & 0.36 & 0.114\\
@@ -579,13 +580,13 @@ from IVP --- it was byte-identical to IVP in an earlier draft (Sharpe
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.95\textwidth]{../figures/risk_return_scatter.png}
-  \caption{Risk-return scatter for the full 22-strategy comparison.
+  \caption{Risk-return scatter for the full 23-strategy comparison.
   Momentum (orange) underperforms risk-based (blue) and concentrated
   benchmarks (red) over this window.}
   \label{fig:risk_return}
 \end{figure}
 
-\paragraph{The HRP family bunches.} All twelve HRP-family variants lie
+\paragraph{The HRP family bunches.} All thirteen HRP-family variants lie
 within a 0.05 Sharpe band (0.701--0.749). HRP\_Dynamic\_94 and
 HRP\_ShrunkCov marginally exceed baseline HRP (by $+0.008$ and $+0.004$
 Sharpe respectively); the differences are small and, per
@@ -629,14 +630,19 @@ Section~\ref{sec:results-sweeps} stress-tests this conclusion with an
 exhaustive hyperparameter search and multi-channel embedding extensions,
 and it survives intact.
 
-\paragraph{Detoning and partial correlation underperform HRP.}
-Both target market-mode removal --- a theoretically attractive idea ---
-but doing so during a BTC-led bull market forgoes the upside of being
-correctly exposed to BTC: HRP\_Detoned (0.708) and HRP\_PartialCorr
-(0.720) both trail baseline HRP. The two are no longer numerically
-identical --- an earlier draft's HRP\_PartialCorr had degenerated to IVP
-(\S\ref{sec:methods-cov}) --- but they remain close in weight-rank space
-(\S\ref{sec:results-convergence}).
+\paragraph{Denoising, detoning and partial correlation underperform HRP.}
+Marchenko--Pastur denoising and spectral detoning --- the two MACI 2025
+future-work items --- and precision-matrix partial correlation all aim
+to clean the correlation matrix, and all three cost a little Sharpe in a
+BTC-led bull market, where filtering structure means trimming exposure
+to the asset that ran. The denoising/detoning pair forms a clean
+ablation: HRP (neither, 0.741), HRP\_Denoised (denoising only, 0.712),
+HRP\_Detoned (denoising \emph{and} market-mode removal, 0.708) --- each
+filtering step shaves a little, the denoising step the larger part.
+HRP\_PartialCorr (0.720) lands between them; it is no longer numerically
+identical to IVP --- an earlier draft's version had degenerated to IVP
+(\S\ref{sec:methods-cov}) --- but detoning and partial correlation
+remain close in weight-rank space (\S\ref{sec:results-convergence}).
 
 \paragraph{Momentum splits.} The two pure-momentum strategies ---
 cross-sectional (CS\_MOM, Sharpe 0.663) and risk-managed (RM\_MOM,
@@ -684,12 +690,12 @@ $p=0.051$) sits exactly on the threshold. The economically largest
 edge in the table --- NCO's $+0.19$ Sharpe --- is statistically
 indistinguishable from noise.
 
-\paragraph{Hansen SPA.} Across the 21 candidates versus baseline HRP,
+\paragraph{Hansen SPA.} Across the 22 candidates versus baseline HRP,
 $p_{\text{consistent}} = 0.41$ ($p_{\text{lower}}=0.27$,
 $p_{\text{upper}}=0.54$; Figure~\ref{fig:spa}), computed with the
 reference \texttt{arch} implementation. \textbf{We cannot reject the
 null that no strategy outperforms baseline HRP after correcting for the
-multiple testing of 21 candidates.} MVP carries the highest studentised
+multiple testing of 22 candidates.} MVP carries the highest studentised
 score ($+1.20$), NCO the second ($+0.77$); every remaining candidate ---
 the embedding variants and the rest of the HRP family included --- is
 at or below zero.
@@ -924,7 +930,7 @@ The 2020--2026 headline window includes the COVID-era crypto rally
 $\sim$\$5k to $\sim$\$69k --- arguably the most extreme bull market
 in crypto history. To check whether the $\S$\ref{sec:results}
 conclusions are dominated by that single rally, we re-ran the entire
-22-strategy backtest with $\mathrm{start}=$ \texttt{2022-01-01}
+23-strategy backtest with $\mathrm{start}=$ \texttt{2022-01-01}
 (52 monthly rebalances over $\sim$4.3 years). All other parameters
 identical.
 
@@ -1145,8 +1151,8 @@ so far been a second-order effect dwarfed by the BTC beta.''
 \label{sec:conclusion}
 %% ===========================================================================
 
-We evaluated 22 constructed portfolio strategies --- twelve HRP-family variants
-(the baseline, seven correlation/covariance constructions, four
+We evaluated 23 constructed portfolio strategies --- thirteen HRP-family variants
+(the baseline, eight correlation/covariance constructions, four
 embedding-based variants), four risk-based comparators, three
 nested-clustering optimisers, and three momentum strategies --- on a
 survivorship-bias-corrected, point-in-time cryptocurrency universe of
