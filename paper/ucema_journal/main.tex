@@ -142,8 +142,7 @@ the comparison in three other directions.
 \end{enumerate}
 
 The remainder of this paper is organised as follows. Section~\ref{sec:related}
-reviews related work. Sections~\ref{sec:methods-cov}--\ref{sec:methods-mom}
-present the methodology. Section~\ref{sec:data} describes the data and
+reviews related work. Section~\ref{sec:methods} presents the methodology. Section~\ref{sec:data} describes the data and
 point-in-time universe construction. Section~\ref{sec:backtest} states the
 backtest protocol. Section~\ref{sec:results} presents results.
 Section~\ref{sec:discussion} discusses limitations and contributions.
@@ -192,20 +191,23 @@ bootstrap with data-driven block-length selection used throughout
 this paper for confidence intervals.
 
 %% ===========================================================================
-\section{Methodology: Correlation and Covariance Variants}
-\label{sec:methods-cov}
+\section{Methodology}
+\label{sec:methods}
 %% ===========================================================================
 
-All seven HRP-family strategies share the standard pipeline: distance
+\subsection{Correlation and covariance variants}
+\label{sec:methods-cov}
+
+Every strategy in this group shares the standard HRP pipeline: distance
 matrix $\to$ hierarchical linkage $\to$ quasi-diagonalisation $\to$
 recursive bisection \citep{lopezdeprado2016hrp}. They differ only in
 \emph{how the input correlation (or covariance) matrix is constructed}.
 
-\subsection{Baseline HRP}
+\subsubsection{Baseline HRP}
 $\rho$ from sample correlation; $d_{ij} = \sqrt{(1-\rho_{ij})/2}$;
 single linkage; bisection using the sample covariance.
 
-\subsection{HRP\textsubscript{Denoised}: Marchenko--Pastur eigenvalue denoising}
+\subsubsection{HRP\textsubscript{Denoised}: Marchenko--Pastur eigenvalue denoising}
 Following \citet{lopezdeprado2020mlam}, the empirical eigenvalues of
 the sample correlation matrix are decomposed into a signal subspace
 (eigenvalues above the Marchenko--Pastur upper bound $e_{\max} =
@@ -214,14 +216,14 @@ the sample correlation matrix are decomposed into a signal subspace
 mean (constant-residual method), preserving the trace, before the
 denoised correlation matrix is fed to HRP.
 
-\subsection{HRP\textsubscript{Detoned}: market-mode removal}
+\subsubsection{HRP\textsubscript{Detoned}: market-mode removal}
 Applied to the denoised correlation matrix, detoning removes the top
 $k$ eigenvectors (default $k=1$) and renormalises the diagonal to
 unity \citep{lopezdeprado2020mlam}. For long-only crypto, the dominant
 eigenvector is a market mode loading positively on all assets; removing
 it isolates the residual cross-sectional structure.
 
-\subsection{HRP\textsubscript{PartialCorr}: sparse precision matrix}
+\subsubsection{HRP\textsubscript{PartialCorr}: sparse precision matrix}
 A precision-matrix route to the same market-mode-removal goal:
 $\Theta = \arg\min_{\Theta \succ 0} -\log\det\Theta + \mathrm{tr}(S\Theta)
 + \alpha\|\Theta\|_1$ via graphical lasso \citep{friedman2008glasso},
@@ -239,13 +241,13 @@ to IVP, and the headline table reported the two as identical; the
 hyperparameter sweep of \S\ref{sec:results-sweeps} surfaced the bug, and
 we document the correction explicitly.
 
-\subsection{HRP\textsubscript{Dynamic}: EWMA correlation}
+\subsubsection{HRP\textsubscript{Dynamic}: EWMA correlation}
 Recursive EWMA covariance with decay $\lambda$; the latest snapshot is
 used as the correlation input. We report $\lambda = 0.94$ as the
 RiskMetrics default; sensitivity to $\lambda \in \{0.94, 0.97, 0.99\}$
 is documented in the supplementary appendix.
 
-\subsection{HRP\textsubscript{TailDep}: lower-tail dependence}
+\subsubsection{HRP\textsubscript{TailDep}: lower-tail dependence}
 Empirical lower-tail dependence coefficient $\hat\lambda_L^{ij}(q) =
 P(F_j(X_j) \leq q \mid F_i(X_i) \leq q)$ at $q = 0.05$, symmetrised by
 averaging the two conditional probabilities. The distance is
@@ -254,30 +256,28 @@ retained for bisection. Promoted from appendix to a headline strategy
 after the empirical findings of \S\ref{sec:results} showed it does not
 fall back across the 76 backtest snapshots.
 
-\subsection{HRP\textsubscript{ShrunkCov}: Ledoit--Wolf shrinkage}
+\subsubsection{HRP\textsubscript{ShrunkCov}: Ledoit--Wolf shrinkage}
 Sample covariance replaced with the analytic Ledoit--Wolf shrinkage
 estimator \citep{ledoitwolf2003shrunk,ledoitwolf2004wellcond}; the
 implied correlation is derived from the shrunk covariance and fed
 to HRP. Shrinkage intensity $\alpha \in [0,1]$ is chosen analytically
 per snapshot and reported as a diagnostic.
 
-\subsection{HRP\textsubscript{VolStd}: vol-standardised returns}
+\subsubsection{HRP\textsubscript{VolStd}: vol-standardised returns}
 Per-asset returns are divided by their lagged 30-day rolling standard
 deviation before computing Pearson correlation. Addresses crypto's
 heterogeneous vol scale across the universe (e.g.\ BTC vs.\ SHIB).
 The sample covariance is retained for bisection.
 
-\subsection{HRP\textsubscript{TailDepShrunk}: hybrid}
+\subsubsection{HRP\textsubscript{TailDepShrunk}: hybrid}
 Combines $\S$3.6 (tail-dep distance for the dendrogram) with $\S$3.7
 (LW-shrunk covariance for bisection). Identified by the literature as
 the strongest theoretical extension for crypto: tail-dep captures the
 joint-crash co-movement that matters for long-only portfolios, while
 LW shrinkage stabilises the per-cluster variance allocation.
 
-%% ===========================================================================
-\section{Methodology: Embedding-based HRP Variants}
+\subsection{Embedding-based variants}
 \label{sec:methods-emb}
-%% ===========================================================================
 
 Beyond reweighting the correlation or covariance estimator, the distance
 matrix that drives HRP's dendrogram can be \emph{learned} from a
@@ -291,7 +291,7 @@ never the inverse-variance allocation within a cluster, which is why,
 as \S\ref{sec:results} shows, every embedding variant stays within a
 narrow Sharpe band of baseline HRP.
 
-\subsection{HRP\textsubscript{PathSig}: path signatures}
+\subsubsection{HRP\textsubscript{PathSig}: path signatures}
 Each asset's rolling log-price trajectory, augmented with a monotone time
 channel, is mapped to its level-$L$ truncated path signature
 \citep{lyons1998}, a graded sequence of iterated integrals that
@@ -299,19 +299,19 @@ characterises the path up to tree-like equivalence. Cosine distance on
 the signature vectors drives the dendrogram (default: level 3, 60-day
 window), computed with the \texttt{esig} library.
 
-\subsection{HRP\textsubscript{NodeEmbed}: node2vec graph embedding}
+\subsubsection{HRP\textsubscript{NodeEmbed}: node2vec graph embedding}
 A $k$-nearest-neighbour graph ($k=10$) is built from the sample
 correlation matrix; node2vec random walks plus a skip-gram objective
 \citep{grover2016} learn a 32-dimensional embedding per node. Cosine
 distance on the embeddings drives the dendrogram.
 
-\subsection{HRP\textsubscript{Contrastive}: contrastive SSL}
+\subsubsection{HRP\textsubscript{Contrastive}: contrastive SSL}
 A small one-dimensional convolutional encoder is trained with the NT-Xent
 contrastive loss \citep{chen2020} on Gaussian-jittered pairs of return
 windows; each asset is embedded as the mean encoder output over its
 windows.
 
-\subsection{HRP\textsubscript{TS2Vec}: timestamp-masked contrastive}
+\subsubsection{HRP\textsubscript{TS2Vec}: timestamp-masked contrastive}
 The same encoder family, trained with TS2Vec-style timestamp-mask
 augmentation \citep{yue2022} in place of Gaussian jitter.
 
@@ -330,10 +330,8 @@ back to baseline HRP on any numerical failure; across the 76-snapshot
 backtest no fallback was triggered for any variant, so every reported
 embedding number reflects the embedding pipeline itself.
 
-%% ===========================================================================
-\section{Methodology: Comparator Strategies}
+\subsection{Comparator strategies}
 \label{sec:methods-comparators}
-%% ===========================================================================
 
 \paragraph{Risk-based comparators.}
 \textbf{IVP} (inverse-variance), \textbf{MVP} (minimum-variance via SLSQP),
@@ -362,10 +360,8 @@ long-only \emph{maximum-Sharpe} steps driven by a shrunk 63-day momentum
 estimate, a deliberate test of whether making the allocation
 return-aware helps.
 
-%% ===========================================================================
-\section{Methodology: Momentum}
+\subsection{Momentum strategies}
 \label{sec:methods-mom}
-%% ===========================================================================
 
 The headline comparison includes three crypto-momentum strategies,
 parameter-tuned for crypto's faster momentum decay
@@ -668,7 +664,7 @@ a portfolio-construction insight: it is a directional view on one asset
 in one regime. The post-COVID cut (\S\ref{sec:results-regime}) shows
 how fragile that is.
 
-\subsection{Statistical inference}
+\subsection{Inference results}
 \label{sec:results-inference}
 
 \paragraph{Bootstrap Sharpe CIs.} The 95\% stationary-block-bootstrap
@@ -832,93 +828,6 @@ strategies untuned: consistent with the NCO finding, no amount of
 tuning the \emph{clustering} step closes the gap that only an
 \emph{allocation}-step change (NCO) opens.
 
-\subsection{Convergence findings (the structural results)}
-\label{sec:results-convergence}
-
-Two strategy pairs in our comparison are theoretically related: each
-pair targets the same goal via different mathematical routes. We
-quantify their weight-vector convergence across the full 76-snapshot
-window (Figure~\ref{fig:detone_pc}).
-
-\paragraph{HRP\_Detoned vs HRP\_PartialCorr.} Spectral detoning and
-precision-matrix partial correlation both remove the dominant market
-mode, by different routes. Across the 76 monthly snapshots their
-weight-vector rank correlation is high but not invariant: mean Spearman
-$\rho=0.87$, median $0.93$, with regime-driven dips to $\rho=0.54$ in
-months when the dominant eigenvector shifts sharply. The bug-fixed
-HRP\_PartialCorr ($\alpha=10^{-3}$) is now distinct from the
-inverse-variance portfolio (its weight-rank correlation with IVP
-averages only $\rho=0.08$), whereas the earlier degenerate
-$\alpha=0.05$ implementation \emph{was} IVP. The detoning /
-partial-correlation convergence is therefore a structural relationship
-between two market-mode-removal estimators, not an artefact of one
-collapsing into IVP.
-
-\paragraph{HRP\_TailDep vs HRP\_TailDepShrunk.} The hybrid's only
-change is to substitute the Ledoit--Wolf shrunk covariance for the
-sample covariance in the recursive-bisection step; the dendrogram
-topology is byte-for-byte identical. Spearman is 0.998--1.000 in
-every snapshot tested. This is the most robust convergence finding
-in our analysis: \emph{LW shrinkage in HRP's bisection step is a
-within-cluster variance refinement that does not re-order the
-dendrogram}.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.95\textwidth]{../figures/detoning_vs_partial_corr.png}
-  \caption{Spearman rank correlation between HRP\_Detoned and
-  HRP\_PartialCorr weight vectors across 76 monthly snapshots.}
-  \label{fig:detone_pc}
-\end{figure}
-
-\subsection{Cluster stability: a retraction}
-\label{sec:results-cluster}
-
-An intermediate finding in earlier iterations of this work was that
-HRP\_TailDep produces more stable clusters than baseline HRP under
-Pearson distance. That claim was based on a \emph{single year-pair}
-(2022-12-31 vs 2023-12-31) and showed Pearson ARI $=-0.047$ vs
-TailDep ARI $=+0.265$ at $K=5$.
-
-When we re-ran the analysis across all 76 monthly snapshots
-(Figure~\ref{fig:cluster_stab}, Table~\ref{tab:cluster_stab}), the
-direction reverses. \textbf{Pearson clusters are substantially more
-stable than TailDep clusters at monthly resolution}: Pearson ARI
-mean $+0.744$ vs TailDep $+0.614$; Pearson cophenetic mean $0.861$ vs
-TailDep $0.768$. TailDep ARI exceeds Pearson ARI in only 23 of 75
-month-pairs (31\%).
-
-\begin{table}[H]
-\centering\small
-\caption{Cluster stability across 76 monthly snapshots (2020-2026).}
-\label{tab:cluster_stab}
-\begin{tabular}{lrr}
-\toprule
-Metric & Pearson distance & Lower-tail-dep distance\\
-\midrule
-Average cophenetic correlation & \textbf{0.861} & 0.768\\
-Average ARI vs.\ previous snapshot (K=5) & \textbf{+0.744} & +0.614\\
-Median ARI vs.\ previous snapshot & \textbf{+0.783} & +0.650\\
-Months where TailDep ARI > Pearson ARI & --- & 23 / 75 (31\%)\\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.95\textwidth]{../figures/cluster_stability_timeseries.png}
-  \caption{Cophenetic correlation (top) and ARI vs.\ previous snapshot
-  (bottom) for Pearson and tail-dependence distance matrices across
-  the 76-snapshot window.}
-  \label{fig:cluster_stab}
-\end{figure}
-
-The economic argument for HRP\_TailDep, that it captures the
-joint-crash co-movement structure Pearson summarises poorly,
-\emph{stands}; the secondary cluster-stability argument \emph{does not}.
-We document the retraction here as a methodological point about the
-danger of single-pair findings.
-
 \subsection{Regime sensitivity: excluding the COVID bull run}
 \label{sec:results-regime}
 
@@ -1066,6 +975,93 @@ when the per-period return volatility is what dominates the standard
 error. Higher cadence changes the \emph{ranking texture} (momentum
 catches up) but not the \emph{statistical verdict}.
 
+\subsection{Convergence findings (the structural results)}
+\label{sec:results-convergence}
+
+Two strategy pairs in our comparison are theoretically related: each
+pair targets the same goal via different mathematical routes. We
+quantify their weight-vector convergence across the full 76-snapshot
+window (Figure~\ref{fig:detone_pc}).
+
+\paragraph{HRP\_Detoned vs HRP\_PartialCorr.} Spectral detoning and
+precision-matrix partial correlation both remove the dominant market
+mode, by different routes. Across the 76 monthly snapshots their
+weight-vector rank correlation is high but not invariant: mean Spearman
+$\rho=0.87$, median $0.93$, with regime-driven dips to $\rho=0.54$ in
+months when the dominant eigenvector shifts sharply. The bug-fixed
+HRP\_PartialCorr ($\alpha=10^{-3}$) is now distinct from the
+inverse-variance portfolio (its weight-rank correlation with IVP
+averages only $\rho=0.08$), whereas the earlier degenerate
+$\alpha=0.05$ implementation \emph{was} IVP. The detoning /
+partial-correlation convergence is therefore a structural relationship
+between two market-mode-removal estimators, not an artefact of one
+collapsing into IVP.
+
+\paragraph{HRP\_TailDep vs HRP\_TailDepShrunk.} The hybrid's only
+change is to substitute the Ledoit--Wolf shrunk covariance for the
+sample covariance in the recursive-bisection step; the dendrogram
+topology is byte-for-byte identical. Spearman is 0.998--1.000 in
+every snapshot tested. This is the most robust convergence finding
+in our analysis: \emph{LW shrinkage in HRP's bisection step is a
+within-cluster variance refinement that does not re-order the
+dendrogram}.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{../figures/detoning_vs_partial_corr.png}
+  \caption{Spearman rank correlation between HRP\_Detoned and
+  HRP\_PartialCorr weight vectors across 76 monthly snapshots.}
+  \label{fig:detone_pc}
+\end{figure}
+
+\subsection{Cluster stability: a retraction}
+\label{sec:results-cluster}
+
+An intermediate finding in earlier iterations of this work was that
+HRP\_TailDep produces more stable clusters than baseline HRP under
+Pearson distance. That claim was based on a \emph{single year-pair}
+(2022-12-31 vs 2023-12-31) and showed Pearson ARI $=-0.047$ vs
+TailDep ARI $=+0.265$ at $K=5$.
+
+When we re-ran the analysis across all 76 monthly snapshots
+(Figure~\ref{fig:cluster_stab}, Table~\ref{tab:cluster_stab}), the
+direction reverses. \textbf{Pearson clusters are substantially more
+stable than TailDep clusters at monthly resolution}: Pearson ARI
+mean $+0.744$ vs TailDep $+0.614$; Pearson cophenetic mean $0.861$ vs
+TailDep $0.768$. TailDep ARI exceeds Pearson ARI in only 23 of 75
+month-pairs (31\%).
+
+\begin{table}[H]
+\centering\small
+\caption{Cluster stability across 76 monthly snapshots (2020-2026).}
+\label{tab:cluster_stab}
+\begin{tabular}{lrr}
+\toprule
+Metric & Pearson distance & Lower-tail-dep distance\\
+\midrule
+Average cophenetic correlation & \textbf{0.861} & 0.768\\
+Average ARI vs.\ previous snapshot (K=5) & \textbf{+0.744} & +0.614\\
+Median ARI vs.\ previous snapshot & \textbf{+0.783} & +0.650\\
+Months where TailDep ARI > Pearson ARI & --- & 23 / 75 (31\%)\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{../figures/cluster_stability_timeseries.png}
+  \caption{Cophenetic correlation (top) and ARI vs.\ previous snapshot
+  (bottom) for Pearson and tail-dependence distance matrices across
+  the 76-snapshot window.}
+  \label{fig:cluster_stab}
+\end{figure}
+
+The economic argument for HRP\_TailDep, that it captures the
+joint-crash co-movement structure Pearson summarises poorly,
+\emph{stands}; the secondary cluster-stability argument \emph{does not}.
+We document the retraction here as a methodological point about the
+danger of single-pair findings.
+
 %% ===========================================================================
 \section{Discussion}
 \label{sec:discussion}
@@ -1073,20 +1069,16 @@ catches up) but not the \emph{statistical verdict}.
 
 \subsection{Clustering versus allocation: the one design choice that
 matters}
-The central comparison in this paper is between two design choices. We
-searched the \emph{clustering} step exhaustively (three correlation
-estimators, four distances, four linkages, four embedding families,
-multi-channel inputs, 547 hyperparameter cells), and no configuration
-escaped the HRP-family Sharpe band; the combined Hansen SPA gives
-$p_{\text{consistent}}=0.91$. We then changed the \emph{allocation} step
-in three strategies, and performance moved in both directions: NCO
-(nested minimum variance) to Sharpe $0.93$, HERC (equal-risk-contribution
-across clusters) to $0.71$, and the return-tilted NCO to $-97\%$. HRP
-and all its variants share one allocation rule, inverse-variance
-recursive bisection, and that rule, not the dendrogram, is what holds
-the family together. For practitioners the implication is narrow: on
-the evidence in this study, additional effort on the clustering step
-appears lower-yield than effort on the allocation step.
+The results of \S\ref{sec:results} point to one practical conclusion.
+Varying the \emph{clustering} step, across 547 hyperparameter cells,
+never separated a variant from baseline HRP; varying the
+\emph{allocation} step did, in both directions (NCO to Sharpe $0.93$,
+the return-tilted NCO to $-97\%$). HRP and all its variants share one
+allocation rule, inverse-variance recursive bisection, and that rule,
+not the dendrogram, is what holds the family together. For a
+practitioner the implication is narrow but useful: on this evidence,
+effort spent engineering the clustering distance is lower-yield than
+effort spent on the allocation objective.
 
 \subsection{Why does Hansen SPA fail to reject, even for NCO?}
 NCO posts a $+0.19$ Sharpe edge over HRP that holds in both the full
@@ -1186,10 +1178,9 @@ practitioner can vary, only the allocation objective produces a
 detectable change, and even the one strategy that improves on baseline
 (NCO) does so by an edge this sample size cannot certify.
 
-\section{Future Work}
-
-Several directions remain open. Time-varying conditional covariance
-(DCC-GARCH) would give the dynamic-correlation layer a properly
+Several directions remain open for future work. Time-varying
+conditional covariance (DCC-GARCH) would give the dynamic-correlation
+layer a properly
 conditional second moment in place of the EWMA recursion.
 Regime-switching analysis could test directly whether detoning and
 partial correlation, which underperform in the BTC-led 2020--2026
