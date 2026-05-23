@@ -730,19 +730,22 @@ illustration of the estimation-error amplification that risk-based
 allocation is designed to avoid. The hybrid is itself informative: it lands \emph{between} its two parents (NCO 0.933, CRISP 0.989), so
 the correlation-shrinkage solve and the hierarchical nesting do not
 stack: the shrinkage carries the edge, and the nesting adds nothing
-measurable on top of it. The two signal-aware extensions further localise
-the NCO\_RT failure. NCOML, which keeps NCO's nesting but replaces the
-sample-mean tilt by the walk-forward XGBoost forecast of
-\S\ref{sec:methods-comparators}, reaches Sharpe $0.804$: it sidesteps
-the collapse and edges above baseline HRP, but lands below pure
-(signal-blind) NCO, so the learned signal does not add value over
-NCO's risk-only allocation. HRP-$\Sigma\mu$, the same forecast fed into
-Wuebben's signal-aware hierarchical optimiser, lands at $0.607$, below
-baseline HRP, a direct demonstration that forcing a return signal into
-HRP's clustering hurts in this market, where the dendrogram is robust
-precisely because it is signal-blind. Changing the clustering step
-produced no detectable outperformance over baseline HRP; changing the
-allocation step moved performance materially, in both directions.
+measurable on top of it. Changing the clustering step produced no
+detectable outperformance over baseline HRP; changing the allocation
+step moved performance materially, in both directions.
+
+\paragraph{Signal-aware extensions to NCO and HRP.} The two
+signal-aware additions further localise the NCO\_RT failure. NCOML,
+which keeps NCO's nesting but replaces the sample-mean tilt by the
+walk-forward XGBoost forecast of \S\ref{sec:methods-comparators},
+reaches Sharpe $0.804$: it sidesteps the collapse and edges above
+baseline HRP, but lands below pure (signal-blind) NCO, so the learned
+signal does not add value over NCO's risk-only allocation.
+HRP-$\Sigma\mu$, the same forecast fed into Wuebben's signal-aware
+hierarchical optimiser, lands at $0.607$, below baseline HRP, a direct
+demonstration that forcing a return signal into HRP's clustering hurts
+in this market, where the dendrogram is robust precisely because it
+is signal-blind.
 
 \paragraph{Embedding variants.} The four embedding-based HRP variants
 are \texttt{HRP\_PathSig} (path signatures; \citealp{lyons1998}),
@@ -882,9 +885,9 @@ and $\approx0.26$. Their observed $+0.25$ and $+0.24$ edges sit just
 below even that mark, yet still clear the pairwise test in this sample
 ($p\approx0.01$), whereas MVP's larger $+0.31$ edge, against a far
 higher $0.47$ threshold, does not.
-\textbf{The pairwise null is therefore a statement about detectable
-effect size given concentration; it is the multiple-testing-corrected
-SPA, not the per-strategy power, that ultimately declines to reject.}
+The pairwise null is therefore a statement about detectable effect
+size given concentration; it is the multiple-testing-corrected SPA,
+not the per-strategy power, that ultimately declines to reject.
 
 \paragraph{Deflated Sharpe Ratio.} As a third inference lens we compute
 the Deflated Sharpe Ratio \citep{bailey2014dsr}, which deflates an
@@ -1001,9 +1004,9 @@ having searched the entire grid, yields $p_{\text{consistent}}=0.906$
 ($p_{\text{lower}}=0.733$, $p_{\text{upper}}=0.909$). Although 21 of 547
 cells show a nominally positive mean excess return over HRP, the best of them
 (HRP\_ShrunkCov, $\Delta=+0.024$) carries a pairwise Ledoit--Wolf $p$ of
-$0.16$. \textbf{After correcting for the multiple testing of 547
+$0.16$. After correcting for the multiple testing of 547
 hyperparameter configurations, no clustering-step variant significantly
-outperforms baseline HRP.} The headline null result of
+outperforms baseline HRP. The headline null result of
 Section~\ref{sec:results-inference} is not an artefact of leaving
 strategies untuned: consistent with the NCO finding, no amount of
 tuning the \emph{clustering} step closes the gap that only an
@@ -1413,24 +1416,26 @@ conditioned on that fact.
 \label{sec:conclusion}
 %% ===========================================================================
 
-We evaluated 27 constructed portfolio strategies (thirteen HRP-family
-variants: the baseline, eight correlation/covariance constructions and
-four embedding-based variants; five risk-based comparators; four
-nested-clustering optimisers; three momentum strategies; and two
-signal-aware extensions that pair existing nested/hierarchical logic
-with a walk-forward XGBoost return forecast) on a
-survivorship-bias-corrected, point-in-time cryptocurrency universe of
-146 ever-included symbols, over 76 monthly rebalances from 2020-02 to
-2026-05, with every comparison wrapped in a studentized Ledoit--Wolf
-test and the reference Hansen SPA.
+Across 27 constructed portfolio strategies tested against baseline HRP
+on 76 monthly rebalances of a survivorship-bias-corrected Binance USDT
+universe (2020--2026), the allocation step is the only HRP design
+choice that materially moves performance, and even the strategies that
+do move do not survive the multiple-testing correction. The roster
+spans thirteen HRP-family variants (eight correlation/covariance
+constructions and four embedding-based ones), five risk-based
+comparators, four nested-clustering optimisers, three momentum
+strategies and two signal-aware XGBoost-fed extensions; every
+comparison is wrapped in a studentized Ledoit--Wolf test and the
+reference Hansen SPA on a 146-ever-included-symbols point-in-time
+universe.
 
-The central finding is a contrast between two design choices. Varying
-the \emph{clustering} step, that is the correlation, distance, linkage
-or learned embedding that builds the dendrogram, did not produce a
-detectable outperformance over baseline HRP: across a 547-cell
-hyperparameter grid no configuration escapes the HRP-family Sharpe
-band, and the combined Hansen SPA cannot reject the null
-($p_{\text{consistent}}=0.91$). The \emph{allocation} step does matter:
+Concretely: varying the \emph{clustering} step, that is the
+correlation, distance, linkage or learned embedding that builds the
+dendrogram, did not produce a detectable outperformance over baseline
+HRP: across a 547-cell hyperparameter grid no configuration escapes
+the HRP-family Sharpe band, and the combined Hansen SPA cannot reject
+the null ($p_{\text{consistent}}=0.91$). The \emph{allocation} step
+does matter:
 the CRISP correlation-shrinkage portfolio (Sharpe 0.99), an NCO--CRISP
 hybrid (0.98) and NCO (0.93) all clear baseline HRP, while a
 return-tilted NCO collapses to $-97\%$. Replacing that sample-mean
