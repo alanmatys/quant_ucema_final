@@ -50,7 +50,7 @@ assets such as LUNA and FTT included) and is wrapped in the reference
 Hansen Superior Predictive Ability test and a studentized Ledoit--Wolf
 Sharpe-difference test.
 On 76 monthly rebalances over 2020-02 to 2026-05 the thirteen HRP-family
-variants lie within a narrow annualised-Sharpe band (0.70--0.75): across
+variants lie within a narrow annualised-Sharpe band (0.69--0.75): across
 an exhaustive 547-cell hyperparameter grid, no correlation, distance,
 linkage or embedding choice separates from baseline HRP (combined Hansen
 SPA $p_{\text{consistent}}=0.91$). Performance moves only when the
@@ -141,16 +141,16 @@ the comparison in three other directions.
       block bootstrap \citep{politis1994bootstrap,politis2004blocklength}.
       (iv) An explicit power analysis quantifying the Sharpe edge this
       design could actually detect.
-\item \textbf{Empirical characterisation and a retraction.}
+\item \textbf{Empirical characterisation and correction of an earlier interpretation.}
       We document the structural convergence findings of
-      $\S$\ref{sec:results} and \emph{retract} an intermediate finding
-      from earlier draft iterations (that lower-tail dependence produces
-      more stable HRP clusters than Pearson), which a full 76-snapshot
-      re-analysis falsifies.
-\item \textbf{Reproducibility.} All code, data, and figures are in the
-      accompanying git repository; nine specifications (\texttt{specs/01\_denoising.md}
-      through \texttt{specs/09\_inference.md}) define the contracts each
-      implementation phase must satisfy.
+      $\S$\ref{sec:results} and update an earlier interpretation on
+      cluster stability: when evaluated on the full 76-snapshot panel,
+      Pearson-based clustering is more stable than lower-tail dependence
+      at monthly frequency.
+\item \textbf{Reproducibility.} All results are generated from a
+      documented, fully rerunnable workflow with committed inputs,
+      outputs, and figures so that each headline claim can be traced
+      to a corresponding result table.
 \end{enumerate}
 
 The remainder of this paper is organised as follows. Section~\ref{sec:related}
@@ -753,11 +753,12 @@ are \texttt{HRP\_PathSig} (path signatures; \citealp{lyons1998}),
 \citealp{grover2016}), \texttt{HRP\_Contrastive} (NT-Xent contrastive
 SSL; \citealp{chen2020}), and \texttt{HRP\_TS2Vec} (timestamp-mask
 augmentation; \citealp{yue2022}). They rank in the middle of the HRP
-family, with Sharpes $0.703$--$0.714$, all marginally below baseline HRP
-($-0.027$ to $-0.038$) and none significantly different from it
-(Ledoit--Wolf $p \in [0.10, 0.27]$). Embedding methods do not deliver an
-out-of-sample Sharpe edge on this universe and horizon; we treat this as
-a null result. Section~\ref{sec:results-sweeps} tests the conclusion
+family, with Sharpes $0.692$--$0.714$, all below baseline HRP. Three of
+the four are not statistically different from baseline HRP at
+conventional levels (Ledoit--Wolf $p>0.05$), while
+\texttt{HRP\_Contrastive} is significantly worse than HRP at the
+pairwise level. None delivers an out-of-sample Sharpe improvement over
+baseline HRP on this universe and horizon. Section~\ref{sec:results-sweeps} tests the conclusion
 against an exhaustive hyperparameter search and multi-channel embedding
 extensions, and it holds.
 
@@ -1064,11 +1065,11 @@ leaves the effect well-supported in the data but short of confirmed.
 
 \textbf{(3) Embedding variants partially reverse against baseline HRP
 in the harder regime.} In the full window all four embedding variants
-sit marginally below HRP (deltas $-0.027$ to $-0.038$ Sharpe). In the
-post-COVID window two of the four edge clearly \emph{above} baseline
-HRP (\texttt{HRP\_Contrastive} $+0.008$, \texttt{HRP\_PathSig}
-$+0.007$), \texttt{HRP\_TS2Vec} essentially ties HRP ($-0.001$), and
-\texttt{HRP\_NodeEmbed} ($-0.016$) stays below. None reaches individual significance (all
+sit below HRP (deltas $-0.028$ to $-0.050$ Sharpe). In the
+post-COVID window only one of the four (\texttt{HRP\_PathSig}) edges
+above baseline HRP ($+0.008$), while \texttt{HRP\_Contrastive}
+($-0.010$), \texttt{HRP\_TS2Vec} ($-0.013$), and
+\texttt{HRP\_NodeEmbed} ($-0.016$) remain below. None reaches individual significance (all
 Ledoit--Wolf $p>0.6$) and the margins are tiny, but the partial
 directional reversal is tentative: the path- and sequence-based
 embeddings may capture risk structure that matters more in a choppy
@@ -1386,29 +1387,16 @@ conditioned on that fact.
 \item PIT universe is ranked by Binance quote volume, not market cap.
     Pro-tier CoinGecko or paid Kaiko data would enable a market-cap
     robustness check.
-\item Cross-platform reproducibility of the trained models. When the
-    full pipeline was re-run on independent hardware, every strategy
-    reproduced bit-identically except the two PyTorch-trained encoders
-    (HRP\textsubscript{Contrastive}, HRP\textsubscript{TS2Vec}); the
-    XGBoost forecast that drives NCOML and HRP-$\Sigma\mu$ falls into
-    the same category. Trained-model fits are only conditionally
-    reproducible: multi-threaded BLAS reductions and platform-specific
-    kernels make them bit-identical only within a fixed software stack.
-    We pin the encoders with single-threaded execution and
-    \texttt{torch.use\_deterministic\_algorithms}, and the XGBoost
-    pipeline with \texttt{tree\_method='hist'}, \texttt{n\_jobs=1} and
-    a fixed seed under single-threaded BLAS; the reported figures
-    (generated on macOS~26, Apple Silicon, with Python~3.11,
-    PyTorch~2.12 and XGBoost~3.2) are verified by
-    \texttt{scripts/verify\_embedding\_determinism.py} and
-    \texttt{scripts/verify\_signal\_determinism.py}, both of which
-    confirm bit-identical run-to-run output. On a different operating
-    system or processor architecture the BLAS kernels differ and the
-    residual floating-point noise can propagate through the discrete
-    single-linkage step and the XGBoost tree splits, moving the
-    affected strategies' Sharpes by up to $\approx 0.02$ and the
-    Ledoit--Wolf $p$-values attached to them correspondingly; the
-    headline ranking is unaffected.
+\item Cross-platform reproducibility of trained-model strategies.
+    Closed-form strategies are highly stable across environments, but
+    strategies that rely on learned representations are only
+    conditionally reproducible because platform-level floating-point
+    differences can propagate through clustering and forecast-based
+    allocation. In robustness checks, this affects the PyTorch-based
+    embedding variants most, with Sharpe shifts on the order of
+    $\approx 0.02$ and corresponding movement in marginal pairwise
+    $p$-values. The main ranking structure and joint-test conclusions,
+    however, remain unchanged.
 \end{enumerate}
 
 %% ===========================================================================
@@ -1479,9 +1467,9 @@ multi-exchange consolidated price (e.g.\ Kaiko) for a venue-robust cost
 model are natural data extensions. The most concrete empirical
 follow-up, though, is a longer out-of-sample window: the power analysis
 (\S\ref{sec:results-power}) shows NCO's $+0.19$ Sharpe edge cannot be
-certified on six years of crypto data, and the post-COVID cut hints
-that two of the four embedding variants edge \emph{ahead} of baseline
-HRP in choppier regimes (with a third essentially tied). Both signals are too weak to confirm here but
+certified on six years of crypto data, and the post-COVID cut suggests
+that at least one embedding variant can edge \emph{ahead} of baseline
+HRP in choppier regimes while the others remain close. This signal is too weak to confirm here but
 worth revisiting once more non-bull data accrues. The NCO result also
 invites a closer study of \emph{why} a nested minimum-variance
 allocation, and only that, separates from the HRP pack.
