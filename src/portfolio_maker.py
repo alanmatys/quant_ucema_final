@@ -12,11 +12,12 @@ Reference:
 """
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pandas as pd
-from scipy.cluster.hierarchy import fcluster, linkage
+from scipy.cluster.hierarchy import fcluster, linkage, to_tree
 from scipy.optimize import minimize
 from scipy.sparse.csgraph import minimum_spanning_tree
 from scipy.spatial.distance import squareform
@@ -1467,6 +1468,203 @@ class NCOCrisp(NCO):
             w.loc[intra[lab].index] = float(inter[lab]) * intra[lab].values
         self.weights = w / w.sum()
         return self.weights
+
+
+# =============================================================================
+# SIGNAL-AWARE EXTENSIONS (Wuebben 2026)
+# =============================================================================
+# NCOML and HRPSigmaMu pair the existing clustering / nesting logic with a
+# walk-forward XGBoost forecast of next-30-day asset returns. The mu panel
+# is precomputed once per snapshot by scripts/build_xgboost_signals.py and
+# cached on disk; both classes look it up by snapshot date (the last date in
+# the supplied returns window). If the cache is missing or the snapshot
+# date is uncovered, the classes fall back to baseline NCO / HRP rather
+# than raising into the backtest loop.
+
+_MU_PATH = Path(__file__).resolve().parents[1] / "data" / "xgboost_mu_predictions.csv"
+_MU_PANEL: Optional[pd.DataFrame] = None
+
+
+def _load_mu_panel() -> pd.DataFrame:
+    """Load (and cache at module scope) the XGBoost mu prediction panel."""
+    global _MU_PANEL
+    if _MU_PANEL is None:
+        if not _MU_PATH.exists():
+            raise FileNotFoundError(
+                f"xgboost mu panel not found at {_MU_PATH}; run "
+                f"scripts/build_xgboost_signals.py first."
+            )
+        _MU_PANEL = pd.read_csv(_MU_PATH, index_col=0, parse_dates=[0])
+    return _MU_PANEL
+
+
+def _mu_at(snap_date: pd.Timestamp, assets: list) -> np.ndarray:
+    """Predicted mu vector for `assets` at the largest date <= `snap_date`.
+
+    Exact-date match in normal operation; closest-prior is a defensive
+    fallback. Assets without a prediction (e.g. listed since the panel
+    was built) are filled with zero, so they receive no return-tilt.
+    """
+    panel = _load_mu_panel()
+    avail = panel.index[panel.index <= snap_date]
+    if len(avail) == 0:
+        raise RuntimeError(f"No mu predictions on or before {snap_date}")
+    row = panel.loc[avail[-1]]
+    return row.reindex(assets).fillna(0.0).values.astype(float)
+
+
+class NCOML(NCO):
+    """NCO with walk-forward ML return forecasts (addresses Wuebben 2026
+    Item 1: the sample-mean tilt that destroyed NCOReturnTilted is
+    replaced by an out-of-sample XGBoost prediction).
+
+    Identical clustering and nesting to :class:`NCO`, but every long-only
+    minimum-variance solve is replaced by a long-only max-Sharpe solve
+    fed by a walk-forward XGBoost prediction of next-30-day returns
+    (precomputed per snapshot by ``scripts/build_xgboost_signals.py``,
+    with hyperparameters tuned via TimeSeriesSplit CV inside each
+    snapshot's training window). The mu panel is keyed by the last date
+    of the supplied returns window. This tests whether NCOReturnTilted's
+    -97% collapse was a signal-quality failure or a verdict on
+    return-aware allocation in principle.
+    """
+
+    def __init__(self, returns: pd.DataFrame, linkage_method: str = "ward",
+                 n_clusters: Optional[int] = None) -> None:
+        super().__init__(returns, linkage_method=linkage_method,
+                         n_clusters=n_clusters)
+        self.fallback_used = False
+
+    def _mu(self, items: list) -> np.ndarray:
+        snap_date = pd.Timestamp(self.returns.index[-1])
+        return _mu_at(snap_date, items)
+
+    def get_weights(self) -> pd.Series:
+        try:
+            clusters = HERC._clusters(self)
+            cl_ids = sorted(clusters)
+            intra, cl_returns = {}, {}
+            for lab in cl_ids:
+                items = clusters[lab]
+                if len(items) == 1:
+                    intra[lab] = pd.Series([1.0], index=items)
+                else:
+                    sub = self.returns[items]
+                    w = _max_sharpe_weights(self._mu(items), sub.cov().values)
+                    intra[lab] = pd.Series(w, index=items)
+                cl_returns[lab] = (self.returns[items] * intra[lab]).sum(axis=1)
+
+            if len(cl_ids) >= 2:
+                cl_df = pd.DataFrame({lab: cl_returns[lab] for lab in cl_ids})
+                cluster_mu = np.array([
+                    float(intra[lab].values @ self._mu(list(intra[lab].index)))
+                    for lab in cl_ids
+                ])
+                w = _max_sharpe_weights(cluster_mu, cl_df.cov().values)
+                inter = pd.Series(w, index=cl_ids)
+            else:
+                inter = pd.Series([1.0], index=cl_ids)
+
+            w = pd.Series(0.0, index=list(self.cov.index))
+            for lab in cl_ids:
+                w.loc[intra[lab].index] = float(inter[lab]) * intra[lab].values
+            total = w.sum()
+            if not np.isfinite(total) or total <= 0:
+                self.fallback_used = True
+                return NCO.get_weights(self)
+            self.weights = w / total
+            return self.weights
+        except (FileNotFoundError, RuntimeError, KeyError):
+            self.fallback_used = True
+            return NCO.get_weights(self)
+
+
+class HRPSigmaMu(HRP):
+    """Signal-aware hierarchical optimiser (Wuebben 2026, method A1 with
+    L1 normalisation: HRP-Sigma-mu, addresses Item 2).
+
+    HRP's seriation and quasi-diagonalisation are unchanged. The
+    inverse-variance recursive bisection is replaced by a single
+    bottom-up tree pass that, at each internal node, solves a 2x2
+    mean-variance system on the (left, right) cluster representatives
+    via Cramer's rule
+
+        det     = v_L * v_R - (gamma * c)^2
+        alpha_L = (v_R * s_L - gamma * c * s_R) / det
+        alpha_R = (v_L * s_R - gamma * c * s_L) / det
+
+    where v is the cluster variance, s the cluster signal (w^T mu) and
+    c the cross-covariance of the two cluster representatives. The raw
+    (alpha_L, alpha_R) pair is L1-normalised at each node (Wuebben's
+    "method A1 with L1 fix"), producing signed weights at the root with
+    ||w||_1 = 1. We then project long-only onto the simplex for
+    comparability with the rest of the paper's strategies.
+
+    mu comes from the walk-forward XGBoost forecast cached by
+    ``scripts/build_xgboost_signals.py``. gamma=1 uses the full
+    cross-cluster covariance; gamma=0 ignores between-cluster covariance
+    and recovers a signal-tilted HRP.
+    """
+
+    def __init__(self, returns: pd.DataFrame, gamma: float = 1.0,
+                 linkage_method: str = "single") -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.gamma = gamma
+        self.fallback_used = False
+
+    def get_weights(self) -> pd.Series:
+        try:
+            dist = self.correl_dist(self.corr).fillna(0)
+            dist = (dist + dist.T) / 2
+            link = linkage(squareform(dist.values), self.linkage_method)
+            tree = to_tree(link)
+
+            assets = list(self.cov.index)
+            cov_mat = self.cov.values
+            snap_date = pd.Timestamp(self.returns.index[-1])
+            mu_vec = _mu_at(snap_date, assets)
+            gamma = self.gamma
+
+            def _pass(node):
+                if node.is_leaf():
+                    i = node.get_id()
+                    return (np.array([1.0]), [i],
+                            float(cov_mat[i, i]), float(mu_vec[i]))
+                wL, iL, vL, sL = _pass(node.left)
+                wR, iR, vR, sR = _pass(node.right)
+                c = float(wL @ cov_mat[np.ix_(iL, iR)] @ wR)
+                det = vL * vR - (gamma * c) ** 2
+                if abs(det) < 1e-15:
+                    aL = sL / max(vL, 1e-15)
+                    aR = sR / max(vR, 1e-15)
+                else:
+                    aL = (vR * sL - gamma * c * sR) / det
+                    aR = (vL * sR - gamma * c * sL) / det
+                abs_sum = abs(aL) + abs(aR)
+                if abs_sum < 1e-15:
+                    aL, aR = 0.5, 0.5
+                else:
+                    aL, aR = aL / abs_sum, aR / abs_sum
+                w_sub = np.concatenate([aL * wL, aR * wR])
+                indices = iL + iR
+                v = aL * aL * vL + aR * aR * vR + 2.0 * aL * aR * c
+                s = aL * sL + aR * sR
+                return w_sub, indices, v, s
+
+            w_sub, indices, _, _ = _pass(tree)
+            w = np.zeros(len(assets))
+            for i, idx in enumerate(indices):
+                w[idx] = w_sub[i]
+            w = np.clip(w, 0.0, None)
+            total = float(np.sum(w))
+            if not np.isfinite(total) or total <= 0:
+                self.fallback_used = True
+                return HRP.get_weights(self)
+            self.weights = pd.Series(w / total, index=assets)
+            return self.weights
+        except (FileNotFoundError, RuntimeError, KeyError):
+            self.fallback_used = True
+            return HRP.get_weights(self)
 
 
 # =============================================================================

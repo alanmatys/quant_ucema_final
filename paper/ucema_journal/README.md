@@ -21,9 +21,13 @@ pdflatex main && bibtex main && pdflatex main && pdflatex main
 
 ## Result tables
 All numbers in §6 (Results) trace to committed CSVs in `data/`:
-- `backtest_v2_rebalance_results.csv` — 26-row Scenario B table
-  (25 constructed strategies including baseline HRP, plus the passive
+- `backtest_v2_rebalance_results.csv` — 28-row Scenario B table
+  (27 constructed strategies including baseline HRP, plus the passive
   `HODL_BTC` benchmark)
+- `xgboost_mu_predictions.csv` — walk-forward XGBoost return forecast
+  feeding NCOML and HRP-Σμ (76 snapshots × 146 assets)
+- `xgboost_best_params.csv` — per-snapshot best hyperparameters from
+  the TimeSeriesSplit CV inside each training window
 - `backtest_v2_static_results.csv` — Scenario A
 - `backtest_v2_threshold_results.csv` — Scenarios B/C/C′
 - `backtest_v2_cost_sensitivity.csv` — cost grid
@@ -50,6 +54,8 @@ uv run python scripts/add_denoised.py             # + HRP_Denoised
 uv run python scripts/add_nco_rt.py               # + return-tilted NCO
 uv run python scripts/add_crisp.py                # + CRISP
 uv run python scripts/add_ncocrisp.py             # + NCO-CRISP
+uv run python scripts/build_xgboost_signals.py    # walk-forward XGBoost mu (~12 min)
+uv run python scripts/add_signal_strategies.py    # + NCOML, HRPSigmaMu
 ```
 
 Inference is computed on the common aligned daily-return panel after all

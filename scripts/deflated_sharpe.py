@@ -40,18 +40,19 @@ print(f"Full-search hurdle SR0 (N={N_FULL}) = "
       f"{expected_max_sharpe(trial_sr, N_FULL)*ANN:.4f} annualised\n")
 
 rows = []
-report = ["MVP", "CRISP", "NCO_CRISP", "NCO", "HRP_Dynamic_94", "HRP"]
+report = ["MVP", "CRISP", "NCO_CRISP", "NCO", "NCOML", "HRPSigmaMu",
+          "HRP_Dynamic_94", "HRP"]
 for name in report:
     d = deflated_sharpe_ratio(rdf[name].values, trial_sr, n_trials=N)
     d_full = deflated_sharpe_ratio(rdf[name].values, trial_sr, n_trials=N_FULL)
     rows.append({"strategy": name, "sharpe_ann": d["sr_hat"] * ANN,
                  "skew": d["skew"], "kurtosis": d["kurtosis"],
-                 "sr0_ann": d["sr0"] * ANN, "dsr_n25": d["dsr"],
-                 "dsr_n572": d_full["dsr"]})
+                 "sr0_ann": d["sr0"] * ANN, f"dsr_n{N}": d["dsr"],
+                 f"dsr_n{N_FULL}": d_full["dsr"]})
     f1 = "clears" if d["dsr"] >= 0.95 else "below"
     f2 = "clears" if d_full["dsr"] >= 0.95 else "below"
     print(f"  {name:16s} Sharpe={d['sr_hat']*ANN:+.3f}  skew={d['skew']:+.2f}  "
-          f"kurt={d['kurtosis']:5.1f}  DSR(N=25)={d['dsr']:.3f} ({f1} 0.95)  "
+          f"kurt={d['kurtosis']:5.1f}  DSR(N={N})={d['dsr']:.3f} ({f1} 0.95)  "
           f"DSR(N={N_FULL})={d_full['dsr']:.3f} ({f2})")
 
 out = pd.DataFrame(rows)

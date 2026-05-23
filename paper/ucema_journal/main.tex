@@ -34,15 +34,17 @@
 We extend the MACI 2025 study of Hierarchical Risk Parity (HRP) for
 cryptocurrency portfolios. We close the two future-work items of that
 paper, Marchenko--Pastur denoising and spectral detoning, and broaden
-the comparison to 25 constructed portfolio strategies: thirteen
+the comparison to 27 constructed portfolio strategies: thirteen
 HRP-family variants (the baseline, eight correlation/covariance
 constructions, and four embedding-based variants that learn the
 clustering distance from path signatures, a graph embedding and two
 contrastive sequence encoders); five risk-based comparators (IVP, MVP,
 ERC, Maximum Diversification, and the CRISP correlation-shrinkage
 portfolio); four nested-clustering optimisers (HERC, NCO, a
-return-tilted NCO, and an NCO--CRISP hybrid); and three crypto-momentum
-strategies. Every comparison runs on a survivorship-bias-corrected,
+return-tilted NCO, and an NCO--CRISP hybrid); three crypto-momentum
+strategies; and two signal-aware extensions (NCOML, an NCO fed by a
+walk-forward XGBoost return forecast, and Wuebben's HRP-$\Sigma\mu$
+hierarchical optimiser fed by the same forecast). Every comparison runs on a survivorship-bias-corrected,
 point-in-time Binance universe (146 ever-included symbols, delisted
 assets such as LUNA and FTT included) and is wrapped in the reference
 Hansen Superior Predictive Ability test and a studentized Ledoit--Wolf
@@ -57,15 +59,20 @@ SPA $p_{\text{consistent}}=0.91$). Performance moves only when the
 NCO--CRISP hybrid, and NCO), and CRISP and NCO--CRISP beat baseline HRP
 at the pairwise level in both the full and post-COVID windows
 (Ledoit--Wolf $p\approx0.01$). But the Hansen SPA, correcting for the
-25-candidate search, does not reject the null
-($p_{\text{consistent}}=0.41$): no edge survives the multiple-testing
+27-candidate search, does not reject the null
+($p_{\text{consistent}}=0.51$): no edge survives the multiple-testing
 correction; the Deflated Sharpe Ratio, a second selection-aware test,
 concurs. A power analysis explains the gap: the detectable Sharpe
 edge scales with concentration, and these allocators' edges sit close to
-their detection thresholds. Tilting an allocator toward an
-estimated-return objective instead destroys it (return-tilted NCO,
-$-97\%$ total return), an illustration of the estimation-error
-amplification that motivates risk-based allocation. A passive 100\% BTC
+their detection thresholds. Tilting an allocator toward a sample-mean
+estimated-return objective destroys it (return-tilted NCO, $-97\%$ total
+return); replacing that signal with a walk-forward XGBoost forecast
+sidesteps the collapse (NCOML, Sharpe $0.80$) but does not outperform
+signal-blind NCO, while the same forecast fed into Wuebben's HRP-$\Sigma\mu$
+hierarchical optimiser underperforms baseline HRP (Sharpe $0.61$).
+Together these localise the NCO\_RT collapse to signal quality, not to
+the principle of return-aware allocation; they also show that adding a
+credible learned signal does not break the multiple-testing-corrected null. A passive 100\% BTC
 hold (Sharpe 0.87) still beats every diversified strategy except the
 BTC-concentrating risk allocators; in the post-COVID regime every
 diversified HRP variant loses 51--64\% of capital while BTC gains. We
@@ -388,6 +395,31 @@ hence most near-singular) covariance blocks, and the CRISP shrinkage
 regularises the optimisation inside them. It is the natural hybrid of
 the paper's two best ideas, and reduces to NCO at $\gamma=1$ (up to the long-only projection).
 
+\paragraph{Signal-aware extensions.} Two further comparators feed a
+walk-forward learned return forecast into hierarchical allocation, to
+test whether return-tilted NCO's collapse was a verdict on signal-aware
+allocation in principle or only on the sample-mean tilt it used. The
+forecast is a pooled cross-sectional XGBoost regressor that predicts
+each asset's next-30-day cumulative log return. At every snapshot the
+hyperparameters are tuned by \texttt{TimeSeriesSplit}(3) cross-validation
+inside the training window (grid: \texttt{max\_depth} $\in\{3,5\}$,
+\texttt{learning\_rate} $\in\{0.03, 0.1\}$, \texttt{n\_estimators}
+$\in\{200, 500\}$) and the best estimator is refit on the full window;
+features are lagged returns at 1/5/21/63-day horizons, 21-day realised
+volatility and the cross-sectional rank of the 21-day return. The
+pipeline is single-threaded and seeded for bit-identical reproduction.
+\textbf{NCOML} keeps NCO's clustering and nesting but replaces each
+minimum-variance solve by a long-only max-Sharpe solve fed by the
+XGBoost $\mu$. \textbf{HRP-$\Sigma\mu$} is Wuebben's signal-aware
+hierarchical optimiser (method A1 with L$^1$ normalisation): HRP's
+seriation and quasi-diagonalisation are unchanged, but the inverse-
+variance recursive bisection is replaced by a single bottom-up tree pass
+in which every internal node solves a 2$\times$2 mean-variance system on
+the left vs right cluster representatives via Cramer's rule, with the
+$(\alpha_L,\alpha_R)$ pair L$^1$-normalised at each node; we project the
+signed output long-only at the root for comparability with the rest of
+the paper.
+
 \subsection{Momentum strategies}
 \label{sec:methods-mom}
 
@@ -568,6 +600,7 @@ Strategy & Sharpe & Sortino & Calmar & Total Return & Max DD & LW $p$\\
 \textbf{NCO\_CRISP}      & 0.977 & 0.930 & 0.702 & +1613\% & --81\% & \textbf{0.011}\\
 \textbf{NCO}             & 0.933 & 0.979 & 0.672 & +1503\% & --82\% & 0.218\\
 \textit{HODL\_BTC}       & 0.868 & 0.881 & 0.528 & +749\%  & --77\% & 0.606\\
+NCOML                    & 0.804 & 0.492 & 0.415 & +567\%  & --85\% & 0.804\\
 HRP\_Dynamic\_94         & 0.749 & 0.477 & 0.363 & +442\%  & --85\% & 0.823\\
 HRP\_ShrunkCov           & 0.746 & 0.461 & 0.355 & +428\%  & --85\% & 0.779\\
 \textbf{HRP (baseline)}  & 0.741 & 0.455 & 0.351 & +417\%  & --85\% & ---\\
@@ -588,6 +621,7 @@ IVP                      & 0.697 & 0.388 & 0.297 & +311\%  & --85\% & 0.212\\
 CS\_MOM\_eq21            & 0.663 & 0.298 & 0.218 & +217\%  & --92\% & 0.548\\
 RM\_MOM                  & 0.663 & 0.782 & 0.332 & +118\%  & --40\% & 0.548\\
 ERC                      & 0.663 & 0.315 & 0.242 & +233\%  & --87\% & 0.051\\
+HRPSigmaMu               & 0.607 & 0.241 & 0.189 & +153\%  & --84\% & 0.203\\
 NCO\_RT                  & 0.003 & --0.569 & --0.436 & --97\% & --99\% & \textbf{0.009}\\
 \bottomrule
 \end{tabular}
@@ -602,7 +636,7 @@ makes the paired Sharpe difference noisier. NCO ($+0.19$, $p=0.22$) is
 well short. In the other direction the return-tilted NCO is
 significantly \emph{worse} ($-0.74$ Sharpe, $p=0.009$) and ERC sits on
 the threshold ($-0.078$, $p=0.051$). These pairwise tests do not correct
-for the 25-candidate search; the Hansen SPA, which does, is reported in
+for the 27-candidate search; the Hansen SPA, which does, is reported in
 \S\ref{sec:results-inference} and does not reject. With the bug-fixed
 HRP\_PartialCorr ($\alpha=10^{-3}$, \S\ref{sec:methods-cov}) the strategy
 is now distinct from IVP; it was byte-identical to IVP in an earlier
@@ -619,7 +653,7 @@ draft (Sharpe 0.697), and corrected it sits at 0.720.
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.95\textwidth]{../figures/risk_return_scatter.png}
-  \caption{Risk-return scatter for the full 25-strategy comparison.
+  \caption{Risk-return scatter for the full 27-strategy comparison.
   Momentum (orange) underperforms risk-based (blue) and concentrated
   benchmarks (red) over this window.}
   \label{fig:risk_return}
@@ -652,7 +686,17 @@ illustration of the estimation-error amplification that risk-based
 allocation is designed to avoid. The hybrid is itself informative: it lands \emph{between} its two parents (NCO 0.933, CRISP 0.989), so
 the correlation-shrinkage solve and the hierarchical nesting do not
 stack: the shrinkage carries the edge, and the nesting adds nothing
-measurable on top of it. Changing the clustering step
+measurable on top of it. The two signal-aware extensions further localise
+the NCO\_RT failure. NCOML, which keeps NCO's nesting but replaces the
+sample-mean tilt by the walk-forward XGBoost forecast of
+\S\ref{sec:methods-comparators}, reaches Sharpe $0.804$: it sidesteps
+the collapse and edges above baseline HRP, but lands below pure
+(signal-blind) NCO, so the learned signal does not add value over
+NCO's risk-only allocation. HRP-$\Sigma\mu$, the same forecast fed into
+Wuebben's signal-aware hierarchical optimiser, lands at $0.607$, below
+baseline HRP, a direct demonstration that forcing a return signal into
+HRP's clustering hurts in this market, where the dendrogram is robust
+precisely because it is signal-blind. Changing the clustering step
 produced no detectable outperformance over baseline HRP; changing the
 allocation step moved performance materially, in both directions.
 
@@ -735,12 +779,12 @@ significantly \emph{worse} ($-0.74$, $p=0.009$) and ERC ($-0.078$,
 $p=0.051$) sits on the threshold. These are uncorrected pairwise tests;
 the multiple-testing correction follows.
 
-\paragraph{Hansen SPA.} Across the 25 candidates versus baseline HRP,
-$p_{\text{consistent}} = 0.41$ ($p_{\text{lower}}=0.27$,
-$p_{\text{upper}}=0.54$; Figure~\ref{fig:spa}), computed with the
+\paragraph{Hansen SPA.} Across the 27 candidates versus baseline HRP,
+$p_{\text{consistent}} = 0.51$ ($p_{\text{lower}}=0.40$,
+$p_{\text{upper}}=0.62$; Figure~\ref{fig:spa}), computed with the
 reference \texttt{arch} implementation. \textbf{We cannot reject the
 null that no strategy outperforms baseline HRP after correcting for the
-multiple testing of 25 candidates}, and this is the decisive test:
+multiple testing of 27 candidates}, and this is the decisive test:
 the SPA is exactly the correction the pairwise LW results lack.
 NCO\_CRISP carries the highest studentised score ($+1.64$), CRISP the
 second ($+1.32$), then MVP ($+1.20$); but the bootstrap critical value,
@@ -789,17 +833,18 @@ SPA, not the per-strategy power, that ultimately declines to reject.}
 \paragraph{Deflated Sharpe Ratio.} As a third inference lens we compute
 the Deflated Sharpe Ratio \citep{bailey2014dsr}, which deflates an
 observed Sharpe for the number of strategies tried, the skewness and
-kurtosis of the return series, and the sample length. Treating the 25
+kurtosis of the return series, and the sample length. Treating the 27
 constructed strategies as the trial set, the expected best-of-$N$
 Sharpe under the null is $\mathrm{SR}_0=0.37$ annualised. Only MVP
 clears the conventional $\mathrm{DSR}\ge0.95$ bar
 ($\mathrm{DSR}=0.97$), and it does so partly on the strength of an
 extreme positive return skew ($\gamma_3=5.0$, $\gamma_4=128$) that the
 DSR's non-normality term rewards. CRISP ($0.94$), NCO\_CRISP ($0.94$)
-and NCO ($0.94$) fall just short, and baseline HRP sits at $0.82$.
+and NCO ($0.94$) fall just short; NCOML and HRP-$\Sigma\mu$ sit further
+back at $0.86$ and $0.73$; baseline HRP is at $0.82$.
 Counting the 547-cell hyperparameter sweep as part of the search
-($N\approx572$) raises the hurdle to $\mathrm{SR}_0=0.57$ and pushes
-every strategy below the bar, MVP included ($\mathrm{DSR}=0.91$). The
+($N\approx574$) raises the hurdle to $\mathrm{SR}_0=0.56$ and pushes
+every strategy below the bar, MVP included ($\mathrm{DSR}=0.92$). The
 three lenses (pairwise Ledoit--Wolf, Hansen SPA, and the DSR)
 disagree at the margin on \emph{which} strategies pass, but agree that
 no strategy clears all three: the edges are real but sit on the
@@ -916,7 +961,7 @@ The 2020--2026 headline window includes the COVID-era crypto rally
 $\sim$\$5k to $\sim$\$69k, one of the most extreme bull markets
 in crypto history. To check whether the $\S$\ref{sec:results}
 conclusions are dominated by that single rally, we re-ran the entire
-25-strategy backtest with $\mathrm{start}=$ \texttt{2022-01-01}
+27-strategy backtest with $\mathrm{start}=$ \texttt{2022-01-01}
 (52 monthly rebalances over $\sim$4.3 years; Table~\ref{tab:regime}).
 All other parameters identical.
 
@@ -983,7 +1028,7 @@ to deliver; the previously-buggy implementation completely hid it.
 \centering\small
 \caption{Regime sensitivity: 2020-2026 (incl COVID bull) vs 2022-2026 (post-COVID).
 ``Sharpe'' is annualised arithmetic; ``$\Delta$Sharpe'' is the change from full window
-to post-COVID. A representative 17 of the 25 strategies are shown; the
+to post-COVID. A representative 17 of the 27 strategies are shown; the
 eight omitted strategies all sit within the HRP-family Sharpe band in
 both windows and track the HRP rows shown.}
 \label{tab:regime}
@@ -1182,18 +1227,32 @@ live-market evidence is the sharp opposite: a momentum-tilted NCO is
 the worst strategy in the comparison. The two are reconcilable: a return
 signal helps only when it carries genuine out-of-sample predictive
 content, which a 63-day crypto-momentum signal over 2020--2026 does not.
-The simulation optimism and the live-data failure together delimit when
-signal-aware hierarchical allocation is worth attempting.
+Replacing the sample-mean tilt with a walk-forward XGBoost forecast
+tests this directly. \textbf{NCOML}, the same nested-clustering
+optimiser fed by the learned signal, reaches Sharpe $0.80$, sidestepping
+the $-97\%$ collapse and confirming the failure was signal quality
+rather than return-aware allocation in principle; but it also lands
+\emph{below} pure (signal-blind) NCO at $0.93$, so the XGBoost forecast
+is enough to avoid disaster but not strong enough to outperform NCO's
+risk-only solve. \textbf{HRP-$\Sigma\mu$}, Wuebben's signal-aware
+hierarchical optimiser fed by the same forecast, lands at $0.61$,
+\emph{below} baseline HRP: forcing a return signal into HRP's clustering
+hurts in this market, and the HRP family's strength is therefore in
+its signal-blindness, not despite it. The simulation optimism and the
+live-data behaviour together delimit when signal-aware hierarchical
+allocation is worth attempting: a credible signal removes the collapse
+but does not, on this universe and horizon, beat the signal-blind
+allocators that already exist.
 
 \subsection{Why does the Hansen SPA fail to reject, even for CRISP?}
 CRISP and the NCO--CRISP hybrid each post a $\approx+0.24$ Sharpe edge
 over HRP that is pairwise-significant (Ledoit--Wolf $p\approx0.01$) in
 both the full and the post-COVID windows, yet the Hansen SPA
-($p_{\text{consistent}}=0.41$) does not reject. This is not a
+($p_{\text{consistent}}=0.51$) does not reject. This is not a
 contradiction; it is the multiple-testing correction working as
 intended. The pairwise test asks ``does \emph{this} strategy beat
-HRP?''; the SPA asks ``does \emph{the best of 25 searched strategies}
-beat HRP, given that we searched 25?'', and inflates the critical
+HRP?''; the SPA asks ``does \emph{the best of 27 searched strategies}
+beat HRP, given that we searched 27?'', and inflates the critical
 value accordingly. CRISP's and NCO--CRISP's edges clear the first bar
 and not the second. The honest reading is therefore specific: the two
 shrinkage allocators show a real, regime-robust pairwise edge, but it
@@ -1237,24 +1296,29 @@ realised returns have been dominated by the direction of BTC.
 \item PIT universe is ranked by Binance quote volume, not market cap.
     Pro-tier CoinGecko or paid Kaiko data would enable a market-cap
     robustness check.
-\item Cross-platform reproducibility of the trained encoders. When the
+\item Cross-platform reproducibility of the trained models. When the
     full pipeline was re-run on independent hardware, every strategy
-    reproduced bit-identically except the two PyTorch-trained encoders,
-    HRP\textsubscript{Contrastive} and HRP\textsubscript{TS2Vec}.
-    Neural-network training is only conditionally reproducible:
-    multi-threaded BLAS reductions and platform-specific kernels make it
-    bit-identical only within a fixed software stack. We pin the two
-    encoders with single-threaded execution and
-    \texttt{torch.use\_deterministic\_algorithms}, which makes them
-    bit-identical run-to-run, and the reported figures (generated on
-    macOS~26, Apple Silicon, with Python~3.11 and PyTorch~2.12) are
-    verified by \texttt{scripts/verify\_embedding\_determinism.py}. On a
-    different operating system or processor architecture the BLAS
-    kernels differ, and the residual floating-point noise can propagate
-    through the discrete single-linkage step, moving those two Sharpes
-    by up to $\approx 0.02$ and the Ledoit--Wolf $p$-value attached to
-    them correspondingly; the headline ranking, with every embedding
-    variant at or below baseline HRP, is unaffected.
+    reproduced bit-identically except the two PyTorch-trained encoders
+    (HRP\textsubscript{Contrastive}, HRP\textsubscript{TS2Vec}); the
+    XGBoost forecast that drives NCOML and HRP-$\Sigma\mu$ falls into
+    the same category. Trained-model fits are only conditionally
+    reproducible: multi-threaded BLAS reductions and platform-specific
+    kernels make them bit-identical only within a fixed software stack.
+    We pin the encoders with single-threaded execution and
+    \texttt{torch.use\_deterministic\_algorithms}, and the XGBoost
+    pipeline with \texttt{tree\_method='hist'}, \texttt{n\_jobs=1} and
+    a fixed seed under single-threaded BLAS; the reported figures
+    (generated on macOS~26, Apple Silicon, with Python~3.11,
+    PyTorch~2.12 and XGBoost~3.2) are verified by
+    \texttt{scripts/verify\_embedding\_determinism.py} and
+    \texttt{scripts/verify\_signal\_determinism.py}, both of which
+    confirm bit-identical run-to-run output. On a different operating
+    system or processor architecture the BLAS kernels differ and the
+    residual floating-point noise can propagate through the discrete
+    single-linkage step and the XGBoost tree splits, moving the
+    affected strategies' Sharpes by up to $\approx 0.02$ and the
+    Ledoit--Wolf $p$-values attached to them correspondingly; the
+    headline ranking is unaffected.
 \end{enumerate}
 
 %% ===========================================================================
@@ -1262,10 +1326,12 @@ realised returns have been dominated by the direction of BTC.
 \label{sec:conclusion}
 %% ===========================================================================
 
-We evaluated 25 constructed portfolio strategies (thirteen HRP-family
+We evaluated 27 constructed portfolio strategies (thirteen HRP-family
 variants: the baseline, eight correlation/covariance constructions and
 four embedding-based variants; five risk-based comparators; four
-nested-clustering optimisers; and three momentum strategies) on a
+nested-clustering optimisers; three momentum strategies; and two
+signal-aware extensions that pair existing nested/hierarchical logic
+with a walk-forward XGBoost return forecast) on a
 survivorship-bias-corrected, point-in-time cryptocurrency universe of
 146 ever-included symbols, over 76 monthly rebalances from 2020-02 to
 2026-05, with every comparison wrapped in a studentized Ledoit--Wolf
@@ -1280,11 +1346,15 @@ band, and the combined Hansen SPA cannot reject the null
 ($p_{\text{consistent}}=0.91$). The \emph{allocation} step does matter:
 the CRISP correlation-shrinkage portfolio (Sharpe 0.99), an NCO--CRISP
 hybrid (0.98) and NCO (0.93) all clear baseline HRP, while a
-return-tilted NCO collapses to $-97\%$. CRISP and NCO--CRISP even beat
-HRP at the pairwise level in both the full and post-COVID windows
-(Ledoit--Wolf $p\approx0.01$). But the Hansen SPA, correcting for the
-25-candidate search, still does not reject the null
-($p_{\text{consistent}}=0.41$): no edge survives the multiple-testing
+return-tilted NCO collapses to $-97\%$. Replacing that sample-mean
+signal with a walk-forward XGBoost forecast sidesteps the collapse
+(NCOML, Sharpe 0.80) without beating signal-blind NCO; feeding the
+same forecast into Wuebben's signal-aware HRP-$\Sigma\mu$ underperforms
+baseline HRP (0.61). CRISP and NCO--CRISP beat HRP at the pairwise
+level in both the full and post-COVID windows (Ledoit--Wolf
+$p\approx0.01$). But the Hansen SPA, correcting for the 27-candidate
+search, still does not reject the null
+($p_{\text{consistent}}=0.51$): no edge survives the multiple-testing
 correction. The null is a statement about detectable, search-corrected
 effect size rather than a proof of zero effect.
 

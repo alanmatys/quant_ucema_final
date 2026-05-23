@@ -26,6 +26,7 @@ dependencies = [
     "node2vec>=0.5.0",      # random-walk embeddings (HRP_NodeEmbed); pulls gensim
     "arch>=8.0.0",          # reference Hansen SPA implementation
     "requests>=2.32.5",     # Binance data collection
+    "xgboost>=3.2.0",
 ]
 
 [dependency-groups]

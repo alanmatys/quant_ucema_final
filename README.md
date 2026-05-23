@@ -2,10 +2,12 @@
 
 A continuation of the MACI 2025 paper *"Hierarchical Risk Parity for
 Cryptocurrency Portfolios: A Comparative Analysis"*. The final committed
-comparison set contains **25 constructed strategies** — thirteen
+comparison set contains **27 constructed strategies** — thirteen
 HRP-family variants (including four embedding-based ones), five
 risk-based comparators, four nested-clustering optimisers (HERC, NCO,
-return-tilted NCO, NCO-CRISP), and three crypto-momentum strategies — plus the
+return-tilted NCO, NCO-CRISP), three crypto-momentum strategies, and
+two signal-aware extensions (NCOML and HRP-Σμ, both fed by a
+walk-forward XGBoost return forecast) — plus the
 passive `HODL_BTC` benchmark, on a **survivorship-bias-corrected,
 point-in-time Binance universe**, with Ledoit–Wolf and Hansen SPA
 inference wrapped around every comparison.
@@ -81,6 +83,11 @@ uv run python scripts/add_denoised.py
 uv run python scripts/add_nco_rt.py
 uv run python scripts/add_crisp.py
 uv run python scripts/add_ncocrisp.py
+
+# Walk-forward XGBoost signal panel (~12 min) feeding the two signal-aware
+# strategies, then splice them in
+uv run python scripts/build_xgboost_signals.py
+uv run python scripts/add_signal_strategies.py
 
 # Rebuild the final committed PIT universe artifact from committed CSV inputs
 uv run python scripts/build_pit_universe_final.py
