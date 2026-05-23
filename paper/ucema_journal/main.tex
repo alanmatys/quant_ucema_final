@@ -1006,10 +1006,10 @@ leaves the effect well-supported in the data but short of confirmed.
 \textbf{(3) Embedding variants partially reverse against baseline HRP
 in the harder regime.} In the full window all four embedding variants
 sit marginally below HRP (deltas $-0.027$ to $-0.038$ Sharpe). In the
-post-COVID window three of the four edge \emph{above} baseline HRP
-(\texttt{HRP\_Contrastive} $+0.009$, \texttt{HRP\_PathSig} $+0.008$,
-\texttt{HRP\_TS2Vec} $+0.000$), while \texttt{HRP\_NodeEmbed}
-($-0.015$) stays below. None reaches individual significance (all
+post-COVID window two of the four edge clearly \emph{above} baseline
+HRP (\texttt{HRP\_Contrastive} $+0.008$, \texttt{HRP\_PathSig}
+$+0.007$), \texttt{HRP\_TS2Vec} essentially ties HRP ($-0.001$), and
+\texttt{HRP\_NodeEmbed} ($-0.016$) stays below. None reaches individual significance (all
 Ledoit--Wolf $p>0.6$) and the margins are tiny, but the partial
 directional reversal is tentative: the path- and sequence-based
 embeddings may capture risk structure that matters more in a choppy
@@ -1388,8 +1388,8 @@ model are natural data extensions. The most concrete empirical
 follow-up, though, is a longer out-of-sample window: the power analysis
 (\S\ref{sec:results-power}) shows NCO's $+0.19$ Sharpe edge cannot be
 certified on six years of crypto data, and the post-COVID cut hints
-that three of the four embedding variants edge \emph{ahead} of baseline
-HRP in choppier regimes. Both signals are too weak to confirm here but
+that two of the four embedding variants edge \emph{ahead} of baseline
+HRP in choppier regimes (with a third essentially tied). Both signals are too weak to confirm here but
 worth revisiting once more non-bull data accrues. The NCO result also
 invites a closer study of \emph{why} a nested minimum-variance
 allocation, and only that, separates from the HRP pack.

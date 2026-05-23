@@ -89,11 +89,26 @@ headline summary metrics.
 ## 5. Current Committed Candidate Set
 
 The final committed inference layer covers the headline final comparison
-set after `scripts/add_nco_rt.py` is applied:
+set after all splice scripts have run (see `specs/03_backtest_v2.md` §5
+for the full generation path). The candidate set used by all inference
+artifacts (Ledoit-Wolf, Hansen SPA, bootstrap CIs) is:
 
-- the 21-strategy main roster from `scripts/rerun_all.py`
-- plus `NCO_RT`
-- with `HODL_BTC` included in the aligned panel
+- the 21-strategy main roster from `scripts/rerun_all.py`, plus
+- `HRP_Denoised` (from `add_denoised.py`)
+- `NCO_RT` (from `add_nco_rt.py`)
+- `CRISP` (from `add_crisp.py`)
+- `NCO_CRISP` (from `add_ncocrisp.py`)
+- `NCOML` and `HRPSigmaMu` (from `add_signal_strategies.py`, both fed
+  by the walk-forward XGBoost mu panel at
+  `data/xgboost_mu_predictions.csv`)
+
+That is **27 constructed strategies** including baseline `HRP`, with
+`HODL_BTC` included in the aligned panel as a passive benchmark.
+
+For the SPA the candidate set excludes the baseline `HRP` itself, so
+`inference_spa.csv` carries 25 candidates (24 constructed candidates +
+`HODL_BTC`) when produced by `scripts/rerun_all.py` and is augmented to
+26 then 27 candidates by the splice scripts that follow.
 
 ## 6. Acceptance Criteria
 
@@ -108,3 +123,36 @@ candidate-specific joint-test p-values.
 
 AC4. Any future expansion of CI outputs or bootstrap iteration counts
 must update both this spec and the committed generation script.
+
+## 7. Changelog (Recent Thesis Additions)
+
+Inference has been re-run after each new strategy was added to the
+comparison set, growing the candidate count for the SPA and DSR:
+
+- After `add_denoised.py`: candidate set grew to include `HRP_Denoised`.
+- After `add_nco_rt.py`: candidate set grew to include `NCO_RT`; this
+  strategy collapses to -97% total return in the headline window and
+  is the most-negative entry in the Ledoit-Wolf table.
+- After `add_crisp.py` and `add_ncocrisp.py`: both Wuebben (2026)
+  strategies cleared the pairwise Ledoit-Wolf test against `HRP` at
+  `p < 0.05` (`CRISP` p=0.012, `NCO_CRISP` p=0.011), but neither
+  survives the Hansen SPA correction once it accounts for the search
+  breadth.
+- After `add_signal_strategies.py`: `NCOML` (Sharpe 0.80) sidesteps
+  `NCO_RT`'s collapse but does not beat signal-blind `NCO`;
+  `HRPSigmaMu` (Sharpe 0.61) underperforms baseline `HRP`. Both fail
+  to clear the pairwise test (LW p = 0.80 and 0.20 respectively).
+
+Current committed inference values for the joint test:
+
+- Headline Hansen SPA: `p_lower = 0.40`, `p_consistent = 0.51`,
+  `p_upper = 0.62`
+- Post-COVID Hansen SPA: `p_consistent = 0.38`
+- Weekly Hansen SPA (non-embedding subset): `p_consistent = 0.57`
+
+The Deflated Sharpe Ratio (`data/deflated_sharpe.csv`) is computed on
+the `N = 27` constructed-strategy trial set; the expected best-of-N
+Sharpe under the null is `SR0 = 0.37` annualised. Only `MVP` clears the
+conventional `DSR >= 0.95` bar; `CRISP`, `NCO_CRISP` and `NCO` fall
+just short at `0.94`. None of these survive the wider `N = 547 + 27`
+search-corrected hurdle.

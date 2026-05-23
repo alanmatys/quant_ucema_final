@@ -62,30 +62,54 @@ liquidity-aware market-impact model.
 
 ### 4.1 Constructed strategies in the committed final comparison
 
-The final committed comparison set contains `22` constructed strategies:
+The final committed comparison set contains `27` constructed strategies,
+grouped by family for clarity:
 
-1. `HRP`
+**HRP family (13)** — share inverse-variance recursive bisection; only
+the dendrogram changes:
+
+1. `HRP` (baseline)
 2. `HRP_Detoned`
-3. `HRP_PartialCorr`
-4. `HRP_Dynamic_94`
-5. `HRP_TailDep`
-6. `HRP_TailDepShrunk`
-7. `HRP_ShrunkCov`
-8. `HRP_VolStd`
-9. `IVP`
-10. `MVP`
-11. `ERC`
-12. `MaxDiv`
-13. `CS_MOM_eq21`
-14. `RM_MOM`
-15. `MOM_HRP`
-16. `HERC`
-17. `NCO`
-18. `HRP_PathSig`
-19. `HRP_NodeEmbed`
-20. `HRP_Contrastive`
-21. `HRP_TS2Vec`
-22. `NCO_RT`
+3. `HRP_Denoised`
+4. `HRP_PartialCorr`
+5. `HRP_Dynamic_94`
+6. `HRP_TailDep`
+7. `HRP_TailDepShrunk`
+8. `HRP_ShrunkCov`
+9. `HRP_VolStd`
+10. `HRP_PathSig`
+11. `HRP_NodeEmbed`
+12. `HRP_Contrastive`
+13. `HRP_TS2Vec`
+
+**Risk-based comparators (5):**
+
+14. `IVP`
+15. `MVP`
+16. `ERC`
+17. `MaxDiv`
+18. `CRISP`
+
+**Nested-clustering optimisers (4):**
+
+19. `HERC`
+20. `NCO`
+21. `NCO_RT` (return-tilted NCO with sample-mean tilt)
+22. `NCO_CRISP` (NCO with CRISP-regularised allocation)
+
+**Momentum (3):**
+
+23. `CS_MOM_eq21`
+24. `RM_MOM`
+25. `MOM_HRP`
+
+**Signal-aware extensions (2)** — fed by a walk-forward XGBoost return
+forecast (`data/xgboost_mu_predictions.csv`):
+
+26. `NCOML` (NCO with XGBoost-predicted mu replacing the sample-mean tilt)
+27. `HRPSigmaMu` (Wuebben 2026 method A1 with L1 normalisation: HRP
+    seriation + per-node Cramer's-rule 2x2 mean-variance optimisation
+    on cluster representatives, then long-only projected)
 
 ### 4.2 Passive benchmark
 
@@ -98,17 +122,36 @@ portfolio strategy.
 
 ## 5. Artifact Generation Path
 
-The final committed headline artifacts are produced in two steps:
+The final committed headline artifacts are produced by a multi-step
+pipeline. Each splice script backtests a single new strategy on the
+headline + post-COVID windows, appends it to the daily-return pickle
+and the results CSV, and re-runs Ledoit-Wolf / Hansen SPA / bootstrap-CI
+inference on the augmented candidate set.
 
 1. `scripts/rerun_all.py`
-   - generates the main 21-strategy panel and the base inference outputs
-2. `scripts/add_nco_rt.py`
+   - generates the 21-strategy main roster and the base inference outputs
+2. `scripts/add_denoised.py`
+   - appends `HRP_Denoised`
+3. `scripts/add_nco_rt.py`
    - appends `NCO_RT`
-   - refreshes the final headline/post-COVID/weekly outputs and
-     associated inference files
+4. `scripts/add_crisp.py`
+   - appends `CRISP` (Wuebben 2026 signal-free correlation-shrinkage solver)
+5. `scripts/add_ncocrisp.py`
+   - appends `NCO_CRISP` (NCO with CRISP-regularised allocation)
+6. `scripts/build_xgboost_signals.py`
+   - precomputes the walk-forward XGBoost return-forecast panel
+     `data/xgboost_mu_predictions.csv` (76 snapshots x 146 assets) with
+     `TimeSeriesSplit(3)` CV inside every snapshot's training window;
+     also writes `data/xgboost_best_params.csv` for audit
+7. `scripts/add_signal_strategies.py`
+   - appends `NCOML` and `HRPSigmaMu` (both consume the cached mu panel)
 
-This two-step generation path is part of the current contract unless the
-pipeline is later unified.
+The pipeline is incremental by design: each step takes the previous
+step's artifacts and extends them, so partial runs are usable. The
+build_xgboost_signals.py step is the only slow one (~12 minutes on the
+reference platform); every splice runs in seconds because the mu panel
+is precomputed and the strategies only do a covariance solve per
+snapshot.
 
 ## 6. Metrics and Output Conventions
 
@@ -163,13 +206,18 @@ series once `HODL_BTC` is included.
 - `data/backtest_v2_weekly_results.csv`
 - `data/backtest_v2_weekly_daily_returns.pkl`
 - `data/inference_weekly_spa.csv`
+- `data/xgboost_mu_predictions.csv`
+- `data/xgboost_best_params.csv`
 
 ## 8. Acceptance Criteria
 
 AC1. The spec, `README.md`, `paper/ucema_journal/README.md`, and the
-committed artifacts describe the same final comparison set.
+committed artifacts describe the same final comparison set (27
+constructed strategies + `HODL_BTC`, 28-row headline table).
 
-AC2. The two-step generation path (`rerun_all.py` then `add_nco_rt.py`)
+AC2. The full incremental generation path (`rerun_all.py` then the six
+splice scripts: `add_denoised.py`, `add_nco_rt.py`, `add_crisp.py`,
+`add_ncocrisp.py`, `build_xgboost_signals.py`, `add_signal_strategies.py`)
 is documented wherever reproduction instructions are shown.
 
 AC3. The paper's headline performance discussion is traceable to
@@ -180,3 +228,39 @@ AC4. The paper's inference discussion is traceable to the committed
 
 AC5. The cost-model description is aligned with the actual flat
 turnover-based implementation unless the implementation changes.
+
+## 9. Changelog (Recent Thesis Additions)
+
+In chronological order of integration into the committed comparison set,
+expanding the original 22-strategy contract:
+
+- **`HRP_Denoised`** — first-class HRP variant with Marchenko-Pastur
+  denoising applied to the correlation matrix before linkage.
+- **`CRISP`** — Wuebben (2026) Correlation-Regularised Iterative
+  Shrinkage Portfolio (signal-free form, `gamma=0.5`, long-only
+  simplex projection). Closes the linear system
+  `P_gamma w = 1` with `P_gamma = (1-gamma) diag(Sigma) + gamma Sigma`.
+- **`NCO_CRISP`** — Wuebben-style hybrid: NCO's nested-clustering
+  skeleton with each min-variance solve replaced by a CRISP solve on
+  the corresponding block covariance.
+- **`NCOML`** — Signal-aware NCO: keeps NCO's clustering and nesting
+  but replaces each min-variance solve by a long-only max-Sharpe solve
+  fed by the walk-forward XGBoost mu forecast. Directly tests whether
+  `NCO_RT`'s -97% collapse was a signal-quality failure (it was).
+- **`HRPSigmaMu`** — Wuebben (2026) method A1 with L1 normalisation:
+  single bottom-up tree pass over the HRP dendrogram, each internal
+  node solving a 2x2 Cramer's-rule mean-variance system on the left
+  vs right cluster representatives. Signed weights are L1-normalised
+  per node and long-only projected at the root for comparability.
+- **XGBoost signal pipeline** — pooled cross-sectional regressor
+  retuned per snapshot via `TimeSeriesSplit(3)` CV inside the
+  training window (grid: `max_depth in {3, 5}`, `learning_rate in
+  {0.03, 0.1}`, `n_estimators in {200, 500}`). Features: lagged
+  returns at 1/5/21/63d, 21d realised vol, cross-sectional rank of
+  21d return. Target: next-30-day cumulative log return.
+
+Inference, power analysis and the Deflated Sharpe Ratio have been
+re-run after each addition; current candidate count is 27 (28 with
+HODL_BTC), SPA `p_consistent = 0.51`, DSR trial set `N = 27` with
+`SR0 = 0.37` annualised. The headline thesis (no edge survives the
+multiple-testing correction) is preserved across all additions.
