@@ -31,7 +31,8 @@
 
 \begin{abstract}
 \noindent
-We extend the MACI 2025 HRP study by addressing its two stated
+We extend the 2025 conference study on Hierarchical Risk Parity (HRP)
+by addressing its two stated
 methodological follow-ups (Marchenko--Pastur denoising and spectral
 detoning) and by evaluating a broader cross-section of portfolio
 construction choices on a survivorship-bias-corrected, point-in-time
@@ -43,23 +44,27 @@ signal-aware extensions.
 Across 76 monthly rebalances, the HRP-family variants remain tightly
 clustered in risk-adjusted performance (annualised Sharpe 0.69--0.75),
 and this result persists under a 547-cell hyperparameter sweep
-(combined SPA $p_{\text{consistent}}=0.91$). Strategies that alter the
-allocation step produce larger dispersion (notably MVP, CRISP,
-NCO--CRISP, NCO), with CRISP and NCO--CRISP significant in pairwise
+(combined Hansen Superior Predictive Ability (SPA)
+$p_{\text{consistent}}=0.91$). Strategies that alter the
+allocation step produce larger dispersion (notably the Minimum Variance
+Portfolio (MVP), the Correlation-Regularised Iterative Shrinkage
+Portfolio (CRISP), the Nested Clustered Optimization with CRISP
+allocation (NCO--CRISP), and Nested Clustered Optimization (NCO)), with
+CRISP and NCO--CRISP significant in pairwise
 Ledoit--Wolf tests versus baseline HRP in both full and post-COVID
 windows. However, after accounting for multiple comparisons, the
 headline SPA does not reject ($p_{\text{consistent}}=0.51$), and
-Deflated Sharpe results are directionally consistent with that
+the Deflated Sharpe Ratio (DSR) is directionally consistent with that
 conclusion.
 
 Post-COVID results indicate strong regime sensitivity: diversified HRP
-variants lose 51--64\% of capital while BTC and BTC-concentrating
+variants lose 51--64\% of capital while Bitcoin (BTC) and BTC-concentrating
 allocators hold up better. We also revise an earlier interpretation on
 cluster stability: over the full panel, Pearson-based clustering is more
 stable than lower-tail dependence at monthly frequency. Overall, the
 evidence supports a cautious interpretation: within this universe,
-horizon, and search space, allocation choices are more associated with
-performance differences than clustering perturbations, but those edges
+horizon, and search space, allocation choices are more strongly associated
+with performance differences than clustering perturbations, but those edges
 remain statistically fragile under search-adjusted inference.
 \end{abstract}
 
@@ -70,7 +75,7 @@ detoning, tail dependence, Ledoit--Wolf, Hansen SPA, survivorship bias.
 \section{Introduction}
 %% ===========================================================================
 
-The MACI 2025 paper \citep{matys2025maci} applied Hierarchical Risk Parity
+The 2025 conference paper \citep{matys2025maci} applied Hierarchical Risk Parity
 \citep{lopezdeprado2016hrp} to a five-asset cryptocurrency universe
 (BTC, ETH, LTC, XRP, BCH) over 2021--2023 and concluded that HRP
 delivered better diversification than the Minimum Variance Portfolio
@@ -83,16 +88,17 @@ the comparison in three other directions.
 
 \paragraph{Contributions.}
 \begin{enumerate}
-\item \textbf{Closing the MACI 2025 future-work items.}
+\item \textbf{Closing the 2025 conference paper's future-work items.}
       Implement and evaluate Marchenko--Pastur denoising (\S\ref{sec:methods-cov})
       and spectral detoning. Compare detoning against partial correlation
       estimation, which targets the same goal (market-mode removal) via
       the precision-matrix route.
 \item \textbf{HRP variants, embedding variants, and nested-clustering
       optimisers.} Six correlation/covariance HRP variants
-      (partial-correlation, EWMA dynamic-correlation, lower-tail dependence,
+      (partial-correlation, exponentially weighted moving average (EWMA)
+      dynamic-correlation, lower-tail dependence,
       Ledoit--Wolf shrunk-covariance, vol-standardised, and a
-      tail-dep$+$LW-shrunk hybrid) and \emph{four embedding-based
+      tail-dep$+$Ledoit--Wolf (LW)-shrunk hybrid) and \emph{four embedding-based
       variants} that learn the HRP clustering distance from a representation
       of each asset's return path (level-3 path signatures, a node2vec graph
       embedding, and two contrastive sequence encoders; \S\ref{sec:methods-emb}).
@@ -101,7 +107,8 @@ the comparison in three other directions.
       \citep{raffinot2018herc}, Nested Clustered Optimization
       \citep{lopezdeprado2019nco}, a return-tilted NCO, and an NCO--CRISP
       hybrid (\S\ref{sec:methods-comparators}); these test whether the
-      clustering step or the allocation step drives performance. ERC
+      clustering step or the allocation step drives performance. Equal Risk
+      Contribution (ERC)
       \citep{maillard2010erc}, Maximum Diversification
       \citep{choueifaty2008maxdiv} and CRISP \citep{wuebben2026crisp},
       a recent correlation-shrinkage portfolio, serve as risk-based
@@ -113,7 +120,7 @@ the comparison in three other directions.
 \item \textbf{Methodological rigour and a power analysis.}
       (i) Point-in-time universe rebuilt monthly from Binance USDT
       quote-volume rankings, including assets later delisted (LUNA, FTT,
-      MIR, SRM, etc.) to remove the survivorship bias of the MACI paper's
+      MIR, SRM, etc.) to remove the survivorship bias of the prior
       single-CSV dataset. (ii) Multi-cost scenarios and a weekly-cadence
       robustness check. (iii) Inference around every comparison: the
       reference Hansen SPA implementation \citep{hansen2005spa}, a
