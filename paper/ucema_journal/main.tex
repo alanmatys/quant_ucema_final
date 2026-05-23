@@ -1271,6 +1271,27 @@ danger of single-pair findings.
 \label{sec:discussion}
 %% ===========================================================================
 
+The three threads of \S\ref{sec:results} converge on a single
+argument. First, only one HRP design choice moves performance
+materially: the allocation step. Across every clustering perturbation
+we tried, no configuration escapes the HRP-family Sharpe band; the
+strategies that do escape (NCO, CRISP, NCO\_CRISP, and the return-
+tilted NCO that collapses) all change the within-cluster solve, and
+the two signal-aware extensions (NCOML, HRP-$\Sigma\mu$) reinforce the
+same message in opposite directions. Second, the strategies that do
+move are too few to clear the multiple-testing correction: the Hansen
+SPA and the Deflated Sharpe Ratio agree that no edge survives the
+search, even where CRISP and NCO--CRISP clear the pairwise bar
+comfortably. Third, the whole finding is regime-conditional: in the
+post-COVID cut, diversified HRP variants lose half their capital
+while concentration still wins, so much of what reads as
+``diversification works'' in the full window is a residual on the
+BTC rally. The practical conclusion sits at the intersection of the
+three: HRP's signal-blindness is a feature in this market, the
+allocation step is the only place where engineering effort has paid
+back, and even there the win is below what six years of data could
+certify. The subsections below develop each thread in turn.
+
 \subsection{Clustering versus allocation: the one design choice that
 matters}
 The results of \S\ref{sec:results} point to one practical conclusion.
@@ -1328,26 +1349,23 @@ shrinkage allocators show a real, regime-robust pairwise edge, but it
 is not large enough to survive correction for the breadth of the
 search: it is strongly suggested, not established.
 
-\subsection{Detoning hurts in BTC-led regimes}
-Removing the dominant market mode is theoretically elegant, in that it
-isolates idiosyncratic structure, but in our window the dominant mode
-\emph{was} BTC, and being underweight BTC was costly. Detoning (and
-partial correlation) may yet be valuable in the sideways or rotational
-regimes 2020--2026 did not contain: their value is regime-dependent
-rather than a universal Sharpe improvement.
-
-\subsection{The cost of diversification}
-A passive 100\% BTC hold (Sharpe $0.87$, $+749\%$) beats every
-\emph{diversified} portfolio in the comparison; the only constructed
-strategies above it, MVP and NCO, get there by concentrating back into
-BTC. Over 2020--2026, diversification in cryptocurrency paid a cost in
-foregone BTC upside that the lower drawdowns of diversified portfolios
-did not recover. This is a statement about the regime, a single asset
-dominating a young and highly correlated market, rather than a flaw in
-HRP. The post-COVID cut is the counterweight: there, diversified HRP
-variants lose 51--64\% while concentration still wins. The lesson is
-about regime dependence: in this asset class and over this period,
-realised returns have been dominated by the direction of BTC.
+\subsection{Regime conditionality}
+Two regime-dependent findings frame the rest. Detoning and partial
+correlation, both designed to remove the dominant market mode and
+isolate idiosyncratic structure, underperform here because the dominant
+mode \emph{was} BTC and being underweight BTC was costly; their value
+is regime-dependent rather than a universal Sharpe improvement, and
+the sideways or rotational regimes 2020--2026 did not contain may yet
+reward them. The flip side is that a passive 100\% BTC hold (Sharpe
+$0.87$, $+749\%$) beats every \emph{diversified} portfolio in the
+comparison; the only constructed strategies above it, MVP and NCO, get
+there by concentrating back into BTC, and that re-concentration is a
+regime-conditional bet rather than a portfolio-construction insight.
+The post-COVID cut is the counterweight: there, diversified HRP
+variants lose 51--64\% while concentration still wins. Realised returns
+over 2020--2026 have been dominated by the direction of BTC, and
+inference about portfolio construction in this asset class has to be
+conditioned on that fact.
 
 \subsection{Limitations}
 \begin{enumerate}
