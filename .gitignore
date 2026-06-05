@@ -1,18 +1,44 @@
-*.csv
-*.pdf
-*.fls
-*.log
-*.aux
-*.synctex.gz
-*.fdb_latexmk
+# Python build artifacts
 *.pyc
-*.zip
-
-# Exclude paper folder
-paper/
+__pycache__/
+.pytest_cache/
+.ipynb_checkpoints/
 
 # Virtual environment
 venv/
+.venv/
 
-# macOS
+# Secrets — never commit API keys
+.env
+.env.local
+*.key
+
+# LaTeX build artifacts (do NOT blanket-ignore paper/ — figures and .tex are tracked)
+*.aux
+*.fdb_latexmk
+*.fls
+*.synctex
+*.synctex.gz
+*.toc
+*.bbl
+*.blg
+*.out
+*.log
+
+# OS / archive cruft
 .DS_Store
+__MACOSX/
+*.zip
+
+# Data ingestion caches (large, reproducible — not committed)
+data/coingecko_market_caps_*.csv
+data/backtest_v2_weights_history.parquet
+data/backtest_v2_returns_history.parquet
+data/backtest_v2_weights_history.csv
+data/backtest_v2_returns_history.csv
+
+# Note: most .csv files in data/ ARE committed (PIT universe, results tables, etc.)
+# See specs/05_cleanup.md R4. Only large reproducible caches are ignored above.
+
+# uv / build artifacts
+*.egg-info/

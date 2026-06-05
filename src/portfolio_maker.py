@@ -12,13 +12,25 @@ Reference:
 """
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pandas as pd
-from scipy.cluster.hierarchy import linkage
+from scipy.cluster.hierarchy import fcluster, linkage, to_tree
 from scipy.optimize import minimize
+from scipy.sparse.csgraph import minimum_spanning_tree
 from scipy.spatial.distance import squareform
+
+from sklearn.covariance import LedoitWolf
+
+from src.denoising import denoise_corr_constant_residual, detone_corr
+from src.hrp_variants import (
+    estimate_partial_correlation,
+    ewma_correlation,
+    lower_tail_dependence,
+    tail_dependence_distance,
+)
 
 
 class PortfolioStrategy(ABC):
@@ -97,6 +109,20 @@ class HRP(PortfolioStrategy):
         >>> hrp = HRP(returns)
         >>> weights = hrp.get_weights()
     """
+
+    def __init__(self, returns: pd.DataFrame, linkage_method: str = "single") -> None:
+        """Initialize HRP with optional linkage method override.
+
+        Args:
+            returns: T x N returns DataFrame.
+            linkage_method: scipy linkage method ('single', 'average', 'complete',
+                'ward', etc.). Default 'single' preserves backward compatibility
+                with the original Lopez de Prado specification. Subclasses inherit
+                this attribute; override via `self.linkage_method = 'average'`
+                after construction, or pass through constructors that support it.
+        """
+        super().__init__(returns)
+        self.linkage_method = linkage_method
 
     @staticmethod
     def correl_dist(corr: pd.DataFrame) -> pd.DataFrame:
@@ -247,7 +273,7 @@ class HRP(PortfolioStrategy):
 
         # Step 2: Hierarchical clustering
         condensed_dist = squareform(dist.values)
-        link = linkage(condensed_dist, "single")
+        link = linkage(condensed_dist, self.linkage_method)
 
         # Step 3: Quasi-diagonalization
         sort_ix = self.get_quasi_diag(link)
@@ -664,21 +690,37 @@ class RiskManagedMomentum(PortfolioStrategy):
         return scaling
 
     def get_weights(self):
-        """Compute risk-managed momentum weights with volatility scaling."""
+        """Compute risk-managed momentum weights with volatility scaling.
+
+        Per Barroso & Santa-Clara (2015): scale raw_weights by
+        sigma_target / sigma_realized, capped at [min_leverage, max_leverage].
+
+        Previously this method renormalised the scaled weights to sum=1 —
+        which CANCELLED the scaling entirely (because raw_weights already
+        sums to 1, scaling by a scalar then renormalising gives back the
+        original). The bug was caught in the Phase 5d code review of
+        2026-05-19, evidenced by RM_MOM producing Sharpe = 0.216 identical
+        to CS_MOM_eq21.
+
+        Correct behaviour: hold the residual as cash (zero return). For
+        long-only no-leverage we clip scaling at 1.0 maximum, so the
+        weights sum to scaling (≤ 1.0) and the remainder (1 - scaling) is
+        implicit cash. With scaling < 1, this de-risks during high-vol
+        regimes — exactly what the Barroso & Santa-Clara prescription does.
+        """
         raw_weights = self.calculate_raw_momentum_weights()
         scaling = self.calculate_vol_scaling_factor()
 
-        # Scale weights
-        scaled_weights = raw_weights * scaling
+        # Cap at 1.0 to enforce long-only no-leverage
+        effective_scaling = float(min(scaling, 1.0))
 
-        # Normalize to sum to 1 (long-only, no actual leverage)
-        if scaled_weights.sum() > 0:
-            weights = scaled_weights / scaled_weights.sum()
-        else:
-            weights = pd.Series(1.0 / len(self.returns.columns), index=self.returns.columns)
+        # Apply scaling — residual (1 - effective_scaling) is implicit cash
+        scaled_weights = raw_weights * effective_scaling
+        # No renormalisation. Sum can be < 1.0; backtest treats unallocated
+        # weight as a zero-return cash position.
 
-        self.weights = weights
-        return weights
+        self.weights = scaled_weights
+        return scaled_weights
 
 
 class MomentumHRP(PortfolioStrategy):
@@ -767,3 +809,1087 @@ class MomentumHRP(PortfolioStrategy):
 
         self.weights = weights
         return weights
+
+
+# =============================================================================
+# HRP VARIANTS — correlation-matrix modifications (Specs 01, 02, 06)
+# =============================================================================
+#
+# All variants below follow the same pattern: override __init__ to replace
+# self.corr (and rebuild self.cov consistently) before the inherited HRP
+# pipeline runs unchanged. HRPTailDep is the exception — it uses a tail-based
+# distance matrix, so it overrides get_weights too.
+
+
+def _rebuild_cov_from_corr(corr: pd.DataFrame, std: np.ndarray) -> pd.DataFrame:
+    """Reconstruct a covariance matrix from a corr matrix and a std vector."""
+    cov = corr.values * np.outer(std, std)
+    return pd.DataFrame(cov, index=corr.index, columns=corr.columns)
+
+
+class HRPDenoised(HRP):
+    """HRP using a Marchenko-Pastur denoised correlation matrix (Spec 01)."""
+
+    def __init__(self, returns: pd.DataFrame, bandwidth: float = 0.25) -> None:
+        super().__init__(returns)
+        T, N = returns.shape
+        if T <= N:
+            # MP requires q = T/N > 1; fall back to sample correlation
+            return
+        q = T / N
+        corr_denoised = denoise_corr_constant_residual(self.corr.values, q=q, bandwidth=bandwidth)
+        self.corr = pd.DataFrame(corr_denoised, index=self.corr.index, columns=self.corr.columns)
+        std = np.sqrt(np.diag(self.cov.values))
+        self.cov = _rebuild_cov_from_corr(self.corr, std)
+
+
+class HRPDetoned(HRPDenoised):
+    """HRP using a denoised + detoned correlation matrix (Spec 02)."""
+
+    def __init__(
+        self,
+        returns: pd.DataFrame,
+        bandwidth: float = 0.25,
+        n_market_components: int = 1,
+    ) -> None:
+        super().__init__(returns, bandwidth=bandwidth)
+        if returns.shape[0] <= returns.shape[1]:
+            return  # already fell back to sample; skip detoning too
+        corr_detoned = detone_corr(self.corr.values, n_market_components=n_market_components)
+        self.corr = pd.DataFrame(corr_detoned, index=self.corr.index, columns=self.corr.columns)
+        std = np.sqrt(np.diag(self.cov.values))
+        self.cov = _rebuild_cov_from_corr(self.corr, std)
+
+
+class HRPPartialCorr(HRP):
+    """HRP using a sparse partial-correlation matrix (Spec 06).
+
+    Default `alpha = 1e-3` is calibrated for crypto returns (variance ~0.004).
+    Previous default of 0.05 was inappropriate for the scale — it shrunk
+    all off-diagonals to zero, making this variant silently degenerate to
+    IVP (bug caught in Phase 8h HP sweep, when all 16 alpha cells gave
+    identical Sharpe = 0.697 = IVP's exact value). For other-asset-classes
+    with different return variance, alpha should be retuned or use_cv=True.
+    """
+
+    def __init__(self, returns: pd.DataFrame, alpha: float = 1e-3,
+                 use_cv: bool = False) -> None:
+        super().__init__(returns)
+        pcorr = estimate_partial_correlation(returns, alpha=alpha, use_cv=use_cv)
+        self.corr = pcorr
+        std = np.sqrt(np.diag(self.cov.values))
+        self.cov = _rebuild_cov_from_corr(self.corr, std)
+
+
+class HRPDynamic(HRP):
+    """HRP using an EWMA correlation snapshot (Spec 06)."""
+
+    def __init__(self, returns: pd.DataFrame, lam: float = 0.94) -> None:
+        super().__init__(returns)
+        self.corr = ewma_correlation(returns, lam=lam)
+        std = np.sqrt(np.diag(self.cov.values))
+        self.cov = _rebuild_cov_from_corr(self.corr, std)
+
+
+class HRPShrunkCov(HRP):
+    """HRP using a Ledoit-Wolf shrunk covariance matrix (Spec 06 §2.4).
+
+    Stabilizes the covariance estimate by analytically blending the sample
+    covariance with a scaled-identity shrinkage target. The shrinkage
+    intensity α ∈ [0, 1] is chosen by the Ledoit-Wolf formula and saved as
+    `self.shrinkage_intensity` for paper diagnostics.
+    """
+
+    def __init__(self, returns: pd.DataFrame) -> None:
+        super().__init__(returns)
+        lw = LedoitWolf(assume_centered=False)
+        lw.fit(returns.values)
+        cov_shrunk = lw.covariance_
+        self.cov = pd.DataFrame(cov_shrunk, index=self.cov.index, columns=self.cov.columns)
+        std = np.sqrt(np.diag(cov_shrunk))
+        std = np.where(std <= 0, 1e-12, std)
+        corr_shrunk = cov_shrunk / np.outer(std, std)
+        np.fill_diagonal(corr_shrunk, 1.0)
+        corr_shrunk = (corr_shrunk + corr_shrunk.T) / 2
+        self.corr = pd.DataFrame(corr_shrunk, index=self.corr.index, columns=self.corr.columns)
+        self.shrinkage_intensity = float(lw.shrinkage_)
+
+
+class HRPTailDep(HRP):
+    """HRP using empirical lower-tail dependence as the distance (Spec 06).
+
+    Overrides `get_weights` because the distance matrix is built directly from
+    tail dependence rather than via the correlation→distance transform. Falls
+    back to base HRP on failure (insufficient tail observations, etc.),
+    logging via `self.fallback_used`.
+    """
+
+    def __init__(self, returns: pd.DataFrame, q: float = 0.05) -> None:
+        super().__init__(returns)
+        self.q = q
+        self.fallback_used = False
+        self.tail_dep: Optional[pd.DataFrame] = None
+
+    def get_weights(self) -> pd.Series:
+        try:
+            self.tail_dep = lower_tail_dependence(self.returns, q=self.q)
+            dist = tail_dependence_distance(self.tail_dep)
+            dist = (dist + dist.T) / 2
+            condensed = squareform(dist.values, checks=False)
+            link = linkage(condensed, self.linkage_method)
+            sort_ix = HRP.get_quasi_diag(link)
+            sort_ix = self.corr.index[sort_ix].tolist()
+            self.weights = HRP.get_rec_bipart(self.cov, sort_ix)
+            return self.weights
+        except Exception:
+            # Fall back to base HRP on any failure (e.g. degenerate tail data)
+            self.fallback_used = True
+            return super().get_weights()
+
+
+class HRPVolStd(HRP):
+    """HRP using returns standardized by their rolling volatility (Spec 06 §2.5).
+
+    Standardizing returns by per-asset rolling volatility prevents the
+    clustering from being dominated by raw volatility scale differences
+    (e.g. BTC vs SHIB), surfacing genuine co-movement structure instead.
+    Closer in spirit to GARCH-standardized residuals.
+
+    Implementation: divide each daily return by its rolling-window std
+    (shifted by one day to avoid look-ahead), then compute Pearson
+    correlation on the standardized series. Covariance is kept as the
+    sample covariance of the raw returns (the standardization is for the
+    cluster topology, not the risk-allocation step).
+    """
+
+    def __init__(
+        self,
+        returns: pd.DataFrame,
+        vol_window: int = 30,
+        linkage_method: str = "single",
+    ) -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.vol_window = vol_window
+        rolling_vol = returns.rolling(window=vol_window, min_periods=10).std()
+        rolling_vol = rolling_vol.shift(1)
+        standardized = returns.div(rolling_vol).dropna(how="any")
+        if standardized.empty or standardized.shape[0] < 3:
+            # Insufficient data — fall back to vanilla correlation
+            return
+        new_corr = standardized.corr()
+        # Snap diagonal to unit and symmetrize
+        new_corr_vals = new_corr.values.copy()
+        np.fill_diagonal(new_corr_vals, 1.0)
+        new_corr_vals = (new_corr_vals + new_corr_vals.T) / 2
+        self.corr = pd.DataFrame(new_corr_vals, index=new_corr.index, columns=new_corr.columns)
+
+
+class HRPTailDepShrunk(HRPTailDep):
+    """Hybrid: lower-tail-dependence distance + Ledoit-Wolf shrunk covariance.
+
+    Combines Report 3's #1 recommended HRP extension for crypto:
+    *tail-dependence distance* for the dendrogram topology (so the clusters
+    reflect joint-crash behaviour, which is what long-only crypto risk
+    actually looks like) with *Ledoit-Wolf shrunk covariance* in the
+    recursive-bisection step (so the within-cluster weight allocation is
+    not dominated by sample-covariance noise).
+
+    Inherits the tail-dep `get_weights` path from `HRPTailDep` (which already
+    uses `self.cov` for bisection), so we only need to substitute `self.cov`
+    with the LW-shrunk version in `__init__`. Inherits the same fallback
+    behaviour: on degenerate tail data the parent class falls back to base
+    HRP, which then uses the shrunk covariance.
+    """
+
+    def __init__(self, returns: pd.DataFrame, q: float = 0.05) -> None:
+        super().__init__(returns, q=q)
+        lw = LedoitWolf(assume_centered=False)
+        lw.fit(returns.values)
+        cov_shrunk = lw.covariance_
+        self.cov = pd.DataFrame(cov_shrunk, index=self.cov.index, columns=self.cov.columns)
+        self.shrinkage_intensity = float(lw.shrinkage_)
+
+
+# =============================================================================
+# COMPARATOR STRATEGIES — ERC, MaxDiv, Network Risk Parity (Spec 07)
+# =============================================================================
+
+class ERC(PortfolioStrategy):
+    """Equal Risk Contribution portfolio (Maillard, Roncalli & Teïletche 2010).
+
+    Solves for long-only, fully-invested weights such that each asset
+    contributes equally to portfolio risk:
+
+        RC_i = w_i * (Σw)_i ≈ constant for all i
+
+    Implementation: SLSQP minimization of the sum of squared deviations
+    between actual and target risk contributions (uniform 1/N target).
+    """
+
+    def get_weights(self) -> pd.Series:
+        cov = self.cov.values
+        n = cov.shape[0]
+        target = 1.0 / n
+        x0 = np.full(n, 1.0 / n)
+
+        def objective(w: np.ndarray) -> float:
+            portfolio_var = float(w @ cov @ w)
+            if portfolio_var <= 0:
+                return 1e8
+            marginal_risk = cov @ w
+            rc = w * marginal_risk / portfolio_var  # normalized RC, sums to 1
+            return float(np.sum((rc - target) ** 2))
+
+        constraints = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
+        bounds = [(1e-8, 1.0) for _ in range(n)]
+        result = minimize(
+            objective, x0, method="SLSQP",
+            bounds=bounds, constraints=constraints,
+            options={"maxiter": 500, "ftol": 1e-12},
+        )
+        w = np.clip(result.x, 0, None)
+        w = w / w.sum()
+        self.weights = pd.Series(w, index=self.cov.index)
+        return self.weights
+
+
+class MaxDiv(PortfolioStrategy):
+    """Maximum Diversification portfolio (Choueifaty & Coignard 2008).
+
+    Maximizes the diversification ratio:
+
+        DR(w) = (w' · σ) / sqrt(w' · Σ · w)
+
+    Long-only, fully invested. Implementation: SLSQP minimization of -DR(w).
+    """
+
+    def get_weights(self) -> pd.Series:
+        cov = self.cov.values
+        vols = np.sqrt(np.diag(cov))
+        n = cov.shape[0]
+        x0 = np.full(n, 1.0 / n)
+
+        def neg_div_ratio(w: np.ndarray) -> float:
+            numer = float(w @ vols)
+            denom = float(np.sqrt(max(w @ cov @ w, 1e-16)))
+            return -numer / denom
+
+        constraints = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
+        bounds = [(0.0, 1.0) for _ in range(n)]
+        result = minimize(
+            neg_div_ratio, x0, method="SLSQP",
+            bounds=bounds, constraints=constraints,
+            options={"maxiter": 500, "ftol": 1e-12},
+        )
+        w = np.clip(result.x, 0, None)
+        w = w / w.sum()
+        self.weights = pd.Series(w, index=self.cov.index)
+        return self.weights
+
+
+class NetworkRiskParity(PortfolioStrategy):
+    """Network Risk Parity (Ciciretti & Pallotta 2024).
+
+    Builds a Minimum Spanning Tree (MST) from the correlation-derived distance
+    matrix, then allocates weights inverse to a combination of asset volatility
+    and MST node degree. Highly connected (hub) assets receive less weight,
+    diversifying away from common-factor exposure.
+
+    Weighting (default 'inverse_degree'):
+        w_i ∝ 1 / (σ_i × (degree_i + 1))     # +1 prevents leaf-only concentration
+        then normalized to sum to 1.
+
+    Args:
+        returns: T x N returns DataFrame.
+        network_type: 'mst' (default) — PMFG reserved as future work.
+        centrality: 'inverse_degree' (default) or 'inverse_eigenvector'.
+    """
+
+    def __init__(
+        self,
+        returns: pd.DataFrame,
+        network_type: str = "mst",
+        centrality: str = "inverse_degree",
+    ) -> None:
+        super().__init__(returns)
+        if network_type != "mst":
+            raise NotImplementedError("Only MST is implemented; PMFG is future work.")
+        self.network_type = network_type
+        self.centrality = centrality
+        self.mst_edges: Optional[list[tuple[int, int]]] = None
+        self.degrees: Optional[pd.Series] = None
+
+    def _build_mst(self) -> np.ndarray:
+        """Build MST adjacency from correlation distance d_ij = sqrt(0.5 (1 - ρ))."""
+        corr = self.corr.values
+        dist = np.sqrt(np.maximum(0.5 * (1 - corr), 0))
+        np.fill_diagonal(dist, 0.0)
+        mst_sparse = minimum_spanning_tree(dist)
+        # scipy MST returns upper-triangular; symmetrize
+        mst_dense = mst_sparse.toarray()
+        mst_adj = (mst_dense + mst_dense.T) > 0
+        return mst_adj.astype(int)
+
+    def get_weights(self) -> pd.Series:
+        mst_adj = self._build_mst()
+        n = mst_adj.shape[0]
+
+        # Record edges and degree for diagnostics
+        edges = []
+        for i in range(n):
+            for j in range(i + 1, n):
+                if mst_adj[i, j]:
+                    edges.append((i, j))
+        self.mst_edges = edges
+        degrees = mst_adj.sum(axis=1)
+        self.degrees = pd.Series(degrees, index=self.corr.index)
+
+        vols = np.sqrt(np.diag(self.cov.values))
+        vols = np.where(vols <= 0, 1e-12, vols)
+
+        if self.centrality == "inverse_degree":
+            inverse_score = 1.0 / (vols * (degrees + 1))
+        elif self.centrality == "inverse_eigenvector":
+            # Power iteration for the dominant eigenvector of the adjacency
+            v = np.ones(n) / np.sqrt(n)
+            for _ in range(200):
+                v_new = mst_adj @ v
+                norm = np.linalg.norm(v_new)
+                if norm < 1e-12:
+                    break
+                v_new = v_new / norm
+                if np.max(np.abs(v_new - v)) < 1e-10:
+                    break
+                v = v_new
+            ev_centrality = np.abs(v)
+            inverse_score = 1.0 / (vols * (ev_centrality + 1e-6))
+        else:
+            raise ValueError(f"unknown centrality: {self.centrality}")
+
+        w = inverse_score / inverse_score.sum()
+        self.weights = pd.Series(w, index=self.cov.index)
+        return self.weights
+
+
+def _auto_n_clusters(n_assets: int) -> int:
+    """Default cluster count for HERC / NCO: round(sqrt(N)) --- a standard
+    heuristic --- clamped to [2, N // 2]."""
+    return int(min(max(round(np.sqrt(max(n_assets, 1))), 2),
+                   max(2, n_assets // 2)))
+
+
+class HERC(HRP):
+    """Hierarchical Equal Risk Contribution (Raffinot 2018).
+
+    Shares HRP's hierarchical clustering of the correlation distance, but
+    replaces HRP's pairwise recursive bisection with an explicit two-stage
+    allocation: the dendrogram is cut into K clusters; assets are weighted
+    inverse-variance *within* each cluster; the K cluster portfolios are
+    then combined by an equal-risk-contribution allocation. Ward linkage
+    by default, as in Raffinot's paper.
+
+    Reference: Raffinot, T. (2018). The Hierarchical Equal Risk
+    Contribution Portfolio.
+    """
+
+    def __init__(self, returns: pd.DataFrame, linkage_method: str = "ward",
+                 n_clusters: Optional[int] = None) -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.n_clusters = n_clusters
+
+    def _clusters(self) -> dict:
+        assets = list(self.cov.index)
+        d = HRP.correl_dist(self.corr).values.copy()
+        d = (d + d.T) / 2.0
+        np.fill_diagonal(d, 0.0)
+        link = linkage(squareform(d, checks=False), self.linkage_method)
+        k = self.n_clusters or _auto_n_clusters(len(assets))
+        labels = fcluster(link, t=k, criterion="maxclust")
+        clusters: dict = {}
+        for a, lab in zip(assets, labels):
+            clusters.setdefault(int(lab), []).append(a)
+        return clusters
+
+    def get_weights(self) -> pd.Series:
+        clusters = self._clusters()
+        cl_ids = sorted(clusters)
+        intra, cl_returns = {}, {}
+        for lab in cl_ids:
+            items = clusters[lab]
+            iv = 1.0 / np.diag(self.cov.loc[items, items].values)
+            iv = iv / iv.sum()
+            intra[lab] = pd.Series(iv, index=items)
+            cl_returns[lab] = (self.returns[items] * iv).sum(axis=1)
+
+        if len(cl_ids) >= 2:
+            cl_df = pd.DataFrame({lab: cl_returns[lab] for lab in cl_ids})
+            inter = ERC(cl_df).get_weights()
+        else:
+            inter = pd.Series([1.0], index=cl_ids)
+
+        w = pd.Series(0.0, index=list(self.cov.index))
+        for lab in cl_ids:
+            w.loc[intra[lab].index] = float(inter[lab]) * intra[lab].values
+        self.weights = w / w.sum()
+        return self.weights
+
+
+class NCO(HRP):
+    """Nested Clustered Optimization (Lopez de Prado 2019).
+
+    Clusters assets hierarchically, solves a long-only minimum-variance
+    problem *within* each cluster sub-covariance, collapses each cluster
+    to a single synthetic asset (its intra-cluster portfolio), solves a
+    second long-only minimum-variance problem across the K cluster
+    portfolios, and combines the two stages. By only ever inverting block
+    sub-covariances and a small K x K matrix, NCO suppresses the
+    estimation-error amplification of a direct full-covariance optimiser.
+
+    Reference: Lopez de Prado, M. (2019). A Robust Estimator of the
+    Efficient Frontier.
+    """
+
+    def __init__(self, returns: pd.DataFrame, linkage_method: str = "ward",
+                 n_clusters: Optional[int] = None) -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.n_clusters = n_clusters
+
+    def get_weights(self) -> pd.Series:
+        clusters = HERC._clusters(self)
+        cl_ids = sorted(clusters)
+        intra, cl_returns = {}, {}
+        for lab in cl_ids:
+            items = clusters[lab]
+            if len(items) == 1:
+                intra[lab] = pd.Series([1.0], index=items)
+            else:
+                intra[lab] = MVP(self.returns[items]).get_weights()
+            cl_returns[lab] = (self.returns[items] * intra[lab]).sum(axis=1)
+
+        if len(cl_ids) >= 2:
+            cl_df = pd.DataFrame({lab: cl_returns[lab] for lab in cl_ids})
+            inter = MVP(cl_df).get_weights()
+        else:
+            inter = pd.Series([1.0], index=cl_ids)
+
+        w = pd.Series(0.0, index=list(self.cov.index))
+        for lab in cl_ids:
+            w.loc[intra[lab].index] = float(inter[lab]) * intra[lab].values
+        self.weights = w / w.sum()
+        return self.weights
+
+
+def _max_sharpe_weights(mu: np.ndarray, cov: np.ndarray) -> np.ndarray:
+    """Long-only weights maximising the Sharpe ratio w'mu / sqrt(w'Cov w).
+
+    Solved by SLSQP with a simplex constraint (w >= 0, sum w = 1). Falls
+    back to inverse-variance weights if the optimiser fails or the
+    expected-return vector admits no positive-Sharpe portfolio.
+    """
+    mu = np.asarray(mu, dtype=float)
+    cov = np.asarray(cov, dtype=float)
+    n = len(mu)
+    if n == 1:
+        return np.array([1.0])
+
+    def neg_sharpe(w):
+        pv = float(w @ cov @ w)
+        if pv <= 0:
+            return 0.0
+        return -float(w @ mu) / np.sqrt(pv)
+
+    cons = [{"type": "eq", "fun": lambda w: w.sum() - 1.0}]
+    bnds = [(0.0, 1.0)] * n
+    try:
+        res = minimize(neg_sharpe, np.full(n, 1.0 / n), method="SLSQP",
+                       bounds=bnds, constraints=cons,
+                       options={"maxiter": 200, "ftol": 1e-10})
+        w = np.clip(res.x, 0.0, None)
+        if res.success and w.sum() > 0 and np.isfinite(w).all():
+            return w / w.sum()
+    except Exception:
+        pass
+    iv = 1.0 / np.clip(np.diag(cov), 1e-12, None)
+    return iv / iv.sum()
+
+
+class NCOReturnTilted(NCO):
+    """Return-tilted Nested Clustered Optimization.
+
+    Identical clustering and nesting to :class:`NCO`, but each stage's
+    optimisation is long-only \emph{maximum Sharpe} rather than pure
+    minimum variance. The expected-return input is a shrunk medium-horizon
+    momentum estimate: the cumulative return over a `formation`-day window,
+    shrunk by `shrink` toward its cross-sectional mean (expected returns
+    are hard to estimate, so the tilt is deliberately gentle). This makes
+    the allocation step --- not just the dendrogram --- return-aware.
+    """
+
+    def __init__(self, returns: pd.DataFrame, linkage_method: str = "ward",
+                 n_clusters: Optional[int] = None, formation: int = 63,
+                 shrink: float = 0.5) -> None:
+        super().__init__(returns, linkage_method=linkage_method,
+                         n_clusters=n_clusters)
+        self.formation = formation
+        self.shrink = shrink
+
+    def _shrunk_momentum(self, df: pd.DataFrame) -> np.ndarray:
+        f = min(self.formation, len(df))
+        m = ((1.0 + df.iloc[-f:]).prod() - 1.0).values
+        grand = float(np.mean(m))
+        return grand + self.shrink * (m - grand)
+
+    def get_weights(self) -> pd.Series:
+        clusters = HERC._clusters(self)
+        cl_ids = sorted(clusters)
+        intra, cl_returns = {}, {}
+        for lab in cl_ids:
+            items = clusters[lab]
+            if len(items) == 1:
+                intra[lab] = pd.Series([1.0], index=items)
+            else:
+                sub = self.returns[items]
+                w = _max_sharpe_weights(self._shrunk_momentum(sub),
+                                        sub.cov().values)
+                intra[lab] = pd.Series(w, index=items)
+            cl_returns[lab] = (self.returns[items] * intra[lab]).sum(axis=1)
+
+        if len(cl_ids) >= 2:
+            cl_df = pd.DataFrame({lab: cl_returns[lab] for lab in cl_ids})
+            w = _max_sharpe_weights(self._shrunk_momentum(cl_df),
+                                    cl_df.cov().values)
+            inter = pd.Series(w, index=cl_ids)
+        else:
+            inter = pd.Series([1.0], index=cl_ids)
+
+        w = pd.Series(0.0, index=list(self.cov.index))
+        for lab in cl_ids:
+            w.loc[intra[lab].index] = float(inter[lab]) * intra[lab].values
+        self.weights = w / w.sum()
+        return self.weights
+
+
+def _crisp_weights(cov: np.ndarray, gamma: float = 0.5) -> np.ndarray:
+    """Long-only CRISP weights for a covariance block.
+
+    Solves :math:`P_\\gamma w = \\mathbf{1}` with
+    :math:`P_\\gamma = (1-\\gamma)\\,\\mathrm{diag}(\\Sigma) + \\gamma\\,\\Sigma`
+    (variance-preserving correlation shrinkage), then projects the
+    solution onto the simplex (clip negatives, renormalise).
+    """
+    cov = np.asarray(cov, dtype=float)
+    n = cov.shape[0]
+    if n == 1:
+        return np.array([1.0])
+    p_gamma = (1.0 - gamma) * np.diag(np.diag(cov)) + gamma * cov
+    mu = np.ones(n)
+    try:
+        w = np.linalg.solve(p_gamma, mu)
+    except np.linalg.LinAlgError:
+        w = np.linalg.lstsq(p_gamma, mu, rcond=None)[0]
+    w = np.clip(w, 0.0, None)
+    total = w.sum()
+    if not np.isfinite(total) or total <= 0:
+        w = np.ones(n)
+        total = w.sum()
+    return w / total
+
+
+class CRISP(PortfolioStrategy):
+    """Correlation-Regularised Iterative Shrinkage Portfolio.
+
+    Solves the linear system :math:`P_\\gamma w = \\mu` for portfolio
+    weights, where :math:`P_\\gamma = (1-\\gamma)\\,\\mathrm{diag}(\\Sigma)
+    + \\gamma\\,\\Sigma` is a variance-preserving shrinkage of the sample
+    covariance --- the asset variances (the diagonal) are kept exact while
+    the off-diagonal covariances are shrunk by the factor ``gamma``.
+    ``gamma`` interpolates between an inverse-variance rule (``gamma=0``)
+    and a full minimum-variance solve (``gamma=1``).
+
+    Reference: Wuebben (2026), "Beyond De Prado and Cotton". We use the
+    signal-free form (mu = 1), which makes CRISP a pure risk-based
+    comparator, and fix ``gamma`` at the midpoint 0.5 rather than tuning
+    it in-sample. Long-only weights are obtained by projecting the linear
+    solution onto the simplex (clip negatives, renormalise).
+    """
+
+    def __init__(self, returns: pd.DataFrame, gamma: float = 0.5) -> None:
+        super().__init__(returns)
+        self.gamma = gamma
+
+    def get_weights(self) -> pd.Series:
+        self.weights = pd.Series(_crisp_weights(self.cov.values, self.gamma),
+                                 index=self.cov.index)
+        return self.weights
+
+
+class NCOCrisp(NCO):
+    """Nested Clustered Optimization with CRISP-regularised allocation.
+
+    Identical clustering and nesting to :class:`NCO`, but each within-
+    and across-cluster minimum-variance solve is replaced by a CRISP
+    solve (:func:`_crisp_weights`) on the corresponding block covariance.
+    The hierarchy isolates the most strongly-correlated --- and hence
+    most near-singular --- covariance blocks, and the CRISP shrinkage
+    stabilises the optimisation inside them. At ``gamma=1`` it reduces
+    exactly to NCO; at ``gamma=0`` to a nested inverse-variance
+    allocation. ``gamma`` is fixed at 0.5, not tuned.
+    """
+
+    def __init__(self, returns: pd.DataFrame, linkage_method: str = "ward",
+                 n_clusters: Optional[int] = None, gamma: float = 0.5) -> None:
+        super().__init__(returns, linkage_method=linkage_method,
+                         n_clusters=n_clusters)
+        self.gamma = gamma
+
+    def get_weights(self) -> pd.Series:
+        clusters = HERC._clusters(self)
+        cl_ids = sorted(clusters)
+        intra, cl_returns = {}, {}
+        for lab in cl_ids:
+            items = clusters[lab]
+            if len(items) == 1:
+                intra[lab] = pd.Series([1.0], index=items)
+            else:
+                sub = self.returns[items]
+                w = _crisp_weights(sub.cov().values, self.gamma)
+                intra[lab] = pd.Series(w, index=items)
+            cl_returns[lab] = (self.returns[items] * intra[lab]).sum(axis=1)
+
+        if len(cl_ids) >= 2:
+            cl_df = pd.DataFrame({lab: cl_returns[lab] for lab in cl_ids})
+            w = _crisp_weights(cl_df.cov().values, self.gamma)
+            inter = pd.Series(w, index=cl_ids)
+        else:
+            inter = pd.Series([1.0], index=cl_ids)
+
+        w = pd.Series(0.0, index=list(self.cov.index))
+        for lab in cl_ids:
+            w.loc[intra[lab].index] = float(inter[lab]) * intra[lab].values
+        self.weights = w / w.sum()
+        return self.weights
+
+
+# =============================================================================
+# SIGNAL-AWARE EXTENSIONS (Wuebben 2026)
+# =============================================================================
+# NCOML and HRPSigmaMu pair the existing clustering / nesting logic with a
+# walk-forward XGBoost forecast of next-30-day asset returns. The mu panel
+# is precomputed once per snapshot by scripts/build_xgboost_signals.py and
+# cached on disk; both classes look it up by snapshot date (the last date in
+# the supplied returns window). If the cache is missing or the snapshot
+# date is uncovered, the classes fall back to baseline NCO / HRP rather
+# than raising into the backtest loop.
+
+_MU_PATH = Path(__file__).resolve().parents[1] / "data" / "xgboost_mu_predictions.csv"
+_MU_PANEL: Optional[pd.DataFrame] = None
+
+
+def _load_mu_panel() -> pd.DataFrame:
+    """Load (and cache at module scope) the XGBoost mu prediction panel."""
+    global _MU_PANEL
+    if _MU_PANEL is None:
+        if not _MU_PATH.exists():
+            raise FileNotFoundError(
+                f"xgboost mu panel not found at {_MU_PATH}; run "
+                f"scripts/build_xgboost_signals.py first."
+            )
+        _MU_PANEL = pd.read_csv(_MU_PATH, index_col=0, parse_dates=[0])
+    return _MU_PANEL
+
+
+def _mu_at(snap_date: pd.Timestamp, assets: list) -> np.ndarray:
+    """Predicted mu vector for `assets` at the largest date <= `snap_date`.
+
+    Exact-date match in normal operation; closest-prior is a defensive
+    fallback. Assets without a prediction (e.g. listed since the panel
+    was built) are filled with zero, so they receive no return-tilt.
+    """
+    panel = _load_mu_panel()
+    avail = panel.index[panel.index <= snap_date]
+    if len(avail) == 0:
+        raise RuntimeError(f"No mu predictions on or before {snap_date}")
+    row = panel.loc[avail[-1]]
+    return row.reindex(assets).fillna(0.0).values.astype(float)
+
+
+class NCOML(NCO):
+    """NCO with walk-forward ML return forecasts (addresses Wuebben 2026
+    Item 1: the sample-mean tilt that destroyed NCOReturnTilted is
+    replaced by an out-of-sample XGBoost prediction).
+
+    Identical clustering and nesting to :class:`NCO`, but every long-only
+    minimum-variance solve is replaced by a long-only max-Sharpe solve
+    fed by a walk-forward XGBoost prediction of next-30-day returns
+    (precomputed per snapshot by ``scripts/build_xgboost_signals.py``,
+    with hyperparameters tuned via TimeSeriesSplit CV inside each
+    snapshot's training window). The mu panel is keyed by the last date
+    of the supplied returns window. This tests whether NCOReturnTilted's
+    -97% collapse was a signal-quality failure or a verdict on
+    return-aware allocation in principle.
+    """
+
+    def __init__(self, returns: pd.DataFrame, linkage_method: str = "ward",
+                 n_clusters: Optional[int] = None) -> None:
+        super().__init__(returns, linkage_method=linkage_method,
+                         n_clusters=n_clusters)
+        self.fallback_used = False
+
+    def _mu(self, items: list) -> np.ndarray:
+        snap_date = pd.Timestamp(self.returns.index[-1])
+        return _mu_at(snap_date, items)
+
+    def get_weights(self) -> pd.Series:
+        try:
+            clusters = HERC._clusters(self)
+            cl_ids = sorted(clusters)
+            intra, cl_returns = {}, {}
+            for lab in cl_ids:
+                items = clusters[lab]
+                if len(items) == 1:
+                    intra[lab] = pd.Series([1.0], index=items)
+                else:
+                    sub = self.returns[items]
+                    w = _max_sharpe_weights(self._mu(items), sub.cov().values)
+                    intra[lab] = pd.Series(w, index=items)
+                cl_returns[lab] = (self.returns[items] * intra[lab]).sum(axis=1)
+
+            if len(cl_ids) >= 2:
+                cl_df = pd.DataFrame({lab: cl_returns[lab] for lab in cl_ids})
+                cluster_mu = np.array([
+                    float(intra[lab].values @ self._mu(list(intra[lab].index)))
+                    for lab in cl_ids
+                ])
+                w = _max_sharpe_weights(cluster_mu, cl_df.cov().values)
+                inter = pd.Series(w, index=cl_ids)
+            else:
+                inter = pd.Series([1.0], index=cl_ids)
+
+            w = pd.Series(0.0, index=list(self.cov.index))
+            for lab in cl_ids:
+                w.loc[intra[lab].index] = float(inter[lab]) * intra[lab].values
+            total = w.sum()
+            if not np.isfinite(total) or total <= 0:
+                self.fallback_used = True
+                return NCO.get_weights(self)
+            self.weights = w / total
+            return self.weights
+        except (FileNotFoundError, RuntimeError, KeyError):
+            self.fallback_used = True
+            return NCO.get_weights(self)
+
+
+class HRPSigmaMu(HRP):
+    """Signal-aware hierarchical optimiser (Wuebben 2026, method A1 with
+    L1 normalisation: HRP-Sigma-mu, addresses Item 2).
+
+    HRP's seriation and quasi-diagonalisation are unchanged. The
+    inverse-variance recursive bisection is replaced by a single
+    bottom-up tree pass that, at each internal node, solves a 2x2
+    mean-variance system on the (left, right) cluster representatives
+    via Cramer's rule
+
+        det     = v_L * v_R - (gamma * c)^2
+        alpha_L = (v_R * s_L - gamma * c * s_R) / det
+        alpha_R = (v_L * s_R - gamma * c * s_L) / det
+
+    where v is the cluster variance, s the cluster signal (w^T mu) and
+    c the cross-covariance of the two cluster representatives. The raw
+    (alpha_L, alpha_R) pair is L1-normalised at each node (Wuebben's
+    "method A1 with L1 fix"), producing signed weights at the root with
+    ||w||_1 = 1. We then project long-only onto the simplex for
+    comparability with the rest of the paper's strategies.
+
+    mu comes from the walk-forward XGBoost forecast cached by
+    ``scripts/build_xgboost_signals.py``. gamma=1 uses the full
+    cross-cluster covariance; gamma=0 ignores between-cluster covariance
+    and recovers a signal-tilted HRP.
+    """
+
+    def __init__(self, returns: pd.DataFrame, gamma: float = 1.0,
+                 linkage_method: str = "single") -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.gamma = gamma
+        self.fallback_used = False
+
+    def get_weights(self) -> pd.Series:
+        try:
+            dist = self.correl_dist(self.corr).fillna(0)
+            dist = (dist + dist.T) / 2
+            link = linkage(squareform(dist.values), self.linkage_method)
+            tree = to_tree(link)
+
+            assets = list(self.cov.index)
+            cov_mat = self.cov.values
+            snap_date = pd.Timestamp(self.returns.index[-1])
+            mu_vec = _mu_at(snap_date, assets)
+            gamma = self.gamma
+
+            def _pass(node):
+                if node.is_leaf():
+                    i = node.get_id()
+                    return (np.array([1.0]), [i],
+                            float(cov_mat[i, i]), float(mu_vec[i]))
+                wL, iL, vL, sL = _pass(node.left)
+                wR, iR, vR, sR = _pass(node.right)
+                c = float(wL @ cov_mat[np.ix_(iL, iR)] @ wR)
+                det = vL * vR - (gamma * c) ** 2
+                if abs(det) < 1e-15:
+                    aL = sL / max(vL, 1e-15)
+                    aR = sR / max(vR, 1e-15)
+                else:
+                    aL = (vR * sL - gamma * c * sR) / det
+                    aR = (vL * sR - gamma * c * sL) / det
+                abs_sum = abs(aL) + abs(aR)
+                if abs_sum < 1e-15:
+                    aL, aR = 0.5, 0.5
+                else:
+                    aL, aR = aL / abs_sum, aR / abs_sum
+                w_sub = np.concatenate([aL * wL, aR * wR])
+                indices = iL + iR
+                v = aL * aL * vL + aR * aR * vR + 2.0 * aL * aR * c
+                s = aL * sL + aR * sR
+                return w_sub, indices, v, s
+
+            w_sub, indices, _, _ = _pass(tree)
+            w = np.zeros(len(assets))
+            for i, idx in enumerate(indices):
+                w[idx] = w_sub[i]
+            w = np.clip(w, 0.0, None)
+            total = float(np.sum(w))
+            if not np.isfinite(total) or total <= 0:
+                self.fallback_used = True
+                return HRP.get_weights(self)
+            self.weights = pd.Series(w / total, index=assets)
+            return self.weights
+        except (FileNotFoundError, RuntimeError, KeyError):
+            self.fallback_used = True
+            return HRP.get_weights(self)
+
+
+# =============================================================================
+# EMBEDDING-DISTANCE HRP VARIANTS (feature/embedding-hrp-variants)
+# =============================================================================
+# These four variants replace HRP's correlation-derived distance with an
+# embedding-derived distance. All inherit base HRP's bisection logic and use
+# the sample covariance for within-cluster variance allocation; only the
+# dendrogram topology changes.
+#
+# Same fallback pattern as HRPTailDep: on any failure, log via
+# `self.fallback_used` and fall back to base HRP.
+
+def _embedding_to_hrp_weights(
+    obj: "HRP",
+    distance_matrix: pd.DataFrame,
+    cov: pd.DataFrame,
+) -> pd.Series:
+    """Shared logic for embedding-based HRP variants: linkage on distance,
+    quasi-diagonalisation, recursive bisection using sample covariance."""
+    d = distance_matrix.reindex(index=cov.index, columns=cov.index).fillna(1.0)
+    d_arr = d.values.copy()
+    d_arr = (d_arr + d_arr.T) / 2
+    np.fill_diagonal(d_arr, 0.0)
+    condensed = squareform(d_arr, checks=False)
+    link = linkage(condensed, obj.linkage_method)
+    sort_ix = HRP.get_quasi_diag(link)
+    sort_ix = cov.index[sort_ix].tolist()
+    return HRP.get_rec_bipart(cov, sort_ix)
+
+
+class HRPPathSig(HRP):
+    """HRP with path-signature embedding distance.
+
+    Per-asset path signatures (level-3 truncation by default) are computed
+    on a rolling log-price window, then converted to a cosine-distance
+    matrix that replaces HRP's correlation distance.
+
+    Optionally `extra_channels` (e.g. quote volume, trade count) are
+    appended to each asset's path — orthogonal information the return
+    series does not contain, letting the signature capture cross-channel
+    structure (price/volume lead-lag) that correlation cannot. See
+    `src/embeddings/path_signatures.py`.
+
+    Reference: Chen (1957), Lyons (1998); crypto application Lyons & Akyildirim (2024).
+    """
+
+    def __init__(self, returns: pd.DataFrame, window: int = 60, level: int = 3,
+                 linkage_method: str = "single",
+                 extra_channels: Optional[list] = None,
+                 log_transform: bool = True) -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.window = window
+        self.level = level
+        self.extra_channels = extra_channels
+        self.log_transform = log_transform
+        self.fallback_used = False
+        self.sig_df: Optional[pd.DataFrame] = None
+
+    def get_weights(self) -> pd.Series:
+        try:
+            from src.embeddings.path_signatures import (
+                asset_path_signatures, signatures_to_distance,
+            )
+            self.sig_df = asset_path_signatures(
+                self.returns, window=self.window, level=self.level,
+                extra_channels=self.extra_channels,
+                log_transform=self.log_transform,
+            )
+            dist = signatures_to_distance(self.sig_df)
+            self.weights = _embedding_to_hrp_weights(self, dist, self.cov)
+            return self.weights
+        except Exception:
+            self.fallback_used = True
+            return super().get_weights()
+
+
+class HRPNodeEmbed(HRP):
+    """HRP with node2vec embedding distance.
+
+    Builds a kNN graph from sample correlations, runs node2vec random walks +
+    skip-gram, and uses cosine distance on the resulting embeddings.
+
+    Reference: Grover & Leskovec (2016).
+    """
+
+    def __init__(self, returns: pd.DataFrame, dimensions: int = 32, k: int = 10,
+                 walk_length: int = 20, num_walks: int = 40, p: float = 1.0,
+                 q: float = 1.0, seed: int = 42, linkage_method: str = "single",
+                 weight_mode: str = "absolute_corr") -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.dimensions = dimensions
+        self.k = k
+        self.walk_length = walk_length
+        self.num_walks = num_walks
+        self.p = p
+        self.q = q
+        self.seed = seed
+        self.weight_mode = weight_mode
+        self.fallback_used = False
+        self.emb_df: Optional[pd.DataFrame] = None
+
+    def get_weights(self) -> pd.Series:
+        try:
+            from src.embeddings.graph_emb import (
+                build_corr_knn_graph, node2vec_embeddings, embeddings_to_distance,
+            )
+            g = build_corr_knn_graph(self.corr, k=self.k, weight_mode=self.weight_mode)
+            self.emb_df = node2vec_embeddings(
+                g, dimensions=self.dimensions, walk_length=self.walk_length,
+                num_walks=self.num_walks, p=self.p, q=self.q, seed=self.seed,
+            )
+            dist = embeddings_to_distance(self.emb_df)
+            self.weights = _embedding_to_hrp_weights(self, dist, self.cov)
+            return self.weights
+        except Exception:
+            self.fallback_used = True
+            return super().get_weights()
+
+
+class HRPContrastive(HRP):
+    """HRP with contrastive-SSL embedding distance.
+
+    Trains a small 1D-CNN encoder via NT-Xent contrastive loss on
+    Gaussian-jittered window pairs, then embeds each asset as the mean
+    of the encoder outputs over its windows.
+    """
+
+    def __init__(self, returns: pd.DataFrame, window: int = 40, stride: int = 5,
+                 emb_dim: int = 32, hidden: int = 16, batch_size: int = 64,
+                 epochs: int = 10, lr: float = 1e-3, seed: int = 42,
+                 linkage_method: str = "single",
+                 extra_channels: Optional[list] = None,
+                 log_transform: bool = True) -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.window = window
+        self.stride = stride
+        self.emb_dim = emb_dim
+        self.hidden = hidden
+        self.batch_size = batch_size
+        self.epochs = epochs
+        self.lr = lr
+        self.seed = seed
+        self.extra_channels = extra_channels
+        self.log_transform = log_transform
+        self.fallback_used = False
+        self.emb_df: Optional[pd.DataFrame] = None
+
+    def get_weights(self) -> pd.Series:
+        try:
+            from src.embeddings.contrastive import (
+                train_contrastive_encoder, asset_embeddings_from_encoder,
+                embeddings_to_distance,
+            )
+            encoder, _ = train_contrastive_encoder(
+                self.returns, window=self.window, stride=self.stride,
+                emb_dim=self.emb_dim, hidden=self.hidden,
+                batch_size=self.batch_size, epochs=self.epochs,
+                lr=self.lr, seed=self.seed, extra_channels=self.extra_channels,
+                log_transform=self.log_transform,
+            )
+            self.emb_df = asset_embeddings_from_encoder(
+                encoder, self.returns, window=self.window, stride=self.stride,
+                extra_channels=self.extra_channels,
+                log_transform=self.log_transform,
+            )
+            dist = embeddings_to_distance(self.emb_df)
+            self.weights = _embedding_to_hrp_weights(self, dist, self.cov)
+            return self.weights
+        except Exception:
+            self.fallback_used = True
+            return super().get_weights()
+
+
+class HRPTS2Vec(HRP):
+    """HRP with TS2Vec-lite (timestamp-mask contrastive) embedding distance.
+
+    Same encoder family as `HRPContrastive` but with random-mask
+    augmentation in the style of Yue et al. (2022) instead of Gaussian
+    jitter — closer to the official TS2Vec recipe.
+    """
+
+    def __init__(self, returns: pd.DataFrame, window: int = 40, stride: int = 5,
+                 emb_dim: int = 32, hidden: int = 16, mask_ratio: float = 0.3,
+                 batch_size: int = 64, epochs: int = 10, lr: float = 1e-3,
+                 seed: int = 42, linkage_method: str = "single",
+                 extra_channels: Optional[list] = None,
+                 log_transform: bool = True) -> None:
+        super().__init__(returns, linkage_method=linkage_method)
+        self.window = window
+        self.stride = stride
+        self.emb_dim = emb_dim
+        self.hidden = hidden
+        self.mask_ratio = mask_ratio
+        self.batch_size = batch_size
+        self.epochs = epochs
+        self.lr = lr
+        self.seed = seed
+        self.extra_channels = extra_channels
+        self.log_transform = log_transform
+        self.fallback_used = False
+        self.emb_df: Optional[pd.DataFrame] = None
+
+    def get_weights(self) -> pd.Series:
+        try:
+            from src.embeddings.ts2vec_lite import (
+                train_ts2vec_lite_encoder, asset_embeddings_from_encoder,
+                embeddings_to_distance,
+            )
+            encoder = train_ts2vec_lite_encoder(
+                self.returns, window=self.window, stride=self.stride,
+                emb_dim=self.emb_dim, hidden=self.hidden,
+                mask_ratio=self.mask_ratio, batch_size=self.batch_size,
+                epochs=self.epochs, lr=self.lr, seed=self.seed,
+                extra_channels=self.extra_channels,
+                log_transform=self.log_transform,
+            )
+            self.emb_df = asset_embeddings_from_encoder(
+                encoder, self.returns, window=self.window, stride=self.stride,
+                extra_channels=self.extra_channels,
+                log_transform=self.log_transform,
+            )
+            dist = embeddings_to_distance(self.emb_df)
+            self.weights = _embedding_to_hrp_weights(self, dist, self.cov)
+            return self.weights
+        except Exception:
+            self.fallback_used = True
+            return super().get_weights()

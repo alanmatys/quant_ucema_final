@@ -1,0 +1,61 @@
+[project]
+name = "quant-ucema-hrp"
+version = "1.0.0"
+description = "HRP variants for cryptocurrency portfolios — UCEMA continuation of the MACI 2025 paper"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+license = { text = "MIT" }
+authors = [
+    { name = "Alan Matys" },
+    { name = "Federico Martin Rodriguez" },
+]
+
+# Direct dependencies only; uv.lock pins the full transitive tree with
+# hashes. Lower bounds are the versions the paper's results were produced
+# with — `uv sync` installs exactly the locked versions regardless.
+dependencies = [
+    "numpy>=2.4.6",
+    "pandas>=3.0.0",
+    "scipy>=1.17.0",
+    "matplotlib>=3.10.8",
+    "seaborn>=0.13.2",
+    "scikit-learn>=1.8.0",
+    "torch>=2.12.0",
+    "esig>=1.0.0",          # path signatures (HRP_PathSig) — builds a C extension
+    "networkx>=3.6.1",      # kNN correlation graph (HRP_NodeEmbed)
+    "node2vec>=0.5.0",      # random-walk embeddings (HRP_NodeEmbed); pulls gensim
+    "arch>=8.0.0",          # reference Hansen SPA implementation
+    "requests>=2.32.5",     # Binance data collection
+    "xgboost>=3.2.0",
+]
+
+[dependency-groups]
+# Tooling for the test suite and the analysis notebooks. Installed by
+# default with `uv sync`; skip with `uv sync --no-dev`.
+dev = [
+    "pytest>=9.0.3",
+    "jupyter>=1.1.1",
+    "ipykernel>=7.1.0",
+    "notebook>=7.5.3",
+]
+
+[tool.uv]
+# node2vec 0.5.0 declares numpy>=1.24,<2.0 in its metadata, but it runs
+# correctly on numpy 2.x (verified across the full 76-snapshot backtest).
+# The cap is stale packaging metadata; override it so the modern numpy
+# the rest of the stack (pandas 3, torch 2.12) needs can be used.
+override-dependencies = ["numpy>=2.4.6"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# The codebase imports `from src.<module> import ...`, so the importable
+# package is the `src/` directory itself. Installing the project (uv does
+# this automatically on `uv sync`) makes those imports resolve from any
+# working directory — no PYTHONPATH or sys.path hacks needed.
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

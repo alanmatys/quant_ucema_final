@@ -1,0 +1,1242 @@
+{
+  "description": "Curated candidate list of crypto assets that were plausibly in the top ~50 by market capitalization at some point during 2018-2024. Used by src/universe.py to build the point-in-time universe (see specs/08_universe.md). Mixes the 50 USDT pairs present in the existing dataset with historically significant assets that were later delisted from Binance (LUNA, FTT) or never traded on Binance USDT spot but were materially relevant to the crypto market cap ranking.",
+  "schema_version": 1,
+  "last_updated": "2026-05-19",
+  "candidates": [
+    {
+      "symbol": "BTC",
+      "coingecko_id": "bitcoin",
+      "category": "majors"
+    },
+    {
+      "symbol": "ETH",
+      "coingecko_id": "ethereum",
+      "category": "majors"
+    },
+    {
+      "symbol": "BNB",
+      "coingecko_id": "binancecoin",
+      "category": "exchange_token"
+    },
+    {
+      "symbol": "XRP",
+      "coingecko_id": "ripple",
+      "category": "majors"
+    },
+    {
+      "symbol": "ADA",
+      "coingecko_id": "cardano",
+      "category": "l1"
+    },
+    {
+      "symbol": "SOL",
+      "coingecko_id": "solana",
+      "category": "l1"
+    },
+    {
+      "symbol": "DOT",
+      "coingecko_id": "polkadot",
+      "category": "l1"
+    },
+    {
+      "symbol": "DOGE",
+      "coingecko_id": "dogecoin",
+      "category": "meme"
+    },
+    {
+      "symbol": "AVAX",
+      "coingecko_id": "avalanche-2",
+      "category": "l1"
+    },
+    {
+      "symbol": "MATIC",
+      "coingecko_id": "matic-network",
+      "category": "l2"
+    },
+    {
+      "symbol": "LTC",
+      "coingecko_id": "litecoin",
+      "category": "majors"
+    },
+    {
+      "symbol": "LINK",
+      "coingecko_id": "chainlink",
+      "category": "defi"
+    },
+    {
+      "symbol": "ATOM",
+      "coingecko_id": "cosmos",
+      "category": "l1"
+    },
+    {
+      "symbol": "UNI",
+      "coingecko_id": "uniswap",
+      "category": "defi"
+    },
+    {
+      "symbol": "ETC",
+      "coingecko_id": "ethereum-classic",
+      "category": "majors"
+    },
+    {
+      "symbol": "XLM",
+      "coingecko_id": "stellar",
+      "category": "majors"
+    },
+    {
+      "symbol": "NEAR",
+      "coingecko_id": "near",
+      "category": "l1"
+    },
+    {
+      "symbol": "ALGO",
+      "coingecko_id": "algorand",
+      "category": "l1"
+    },
+    {
+      "symbol": "VET",
+      "coingecko_id": "vechain",
+      "category": "l1"
+    },
+    {
+      "symbol": "ICP",
+      "coingecko_id": "internet-computer",
+      "category": "l1"
+    },
+    {
+      "symbol": "FIL",
+      "coingecko_id": "filecoin",
+      "category": "infra"
+    },
+    {
+      "symbol": "TRX",
+      "coingecko_id": "tron",
+      "category": "l1"
+    },
+    {
+      "symbol": "AAVE",
+      "coingecko_id": "aave",
+      "category": "defi"
+    },
+    {
+      "symbol": "EOS",
+      "coingecko_id": "eos",
+      "category": "l1"
+    },
+    {
+      "symbol": "XTZ",
+      "coingecko_id": "tezos",
+      "category": "l1"
+    },
+    {
+      "symbol": "THETA",
+      "coingecko_id": "theta-token",
+      "category": "infra"
+    },
+    {
+      "symbol": "AXS",
+      "coingecko_id": "axie-infinity",
+      "category": "gaming"
+    },
+    {
+      "symbol": "SAND",
+      "coingecko_id": "the-sandbox",
+      "category": "gaming"
+    },
+    {
+      "symbol": "MANA",
+      "coingecko_id": "decentraland",
+      "category": "gaming"
+    },
+    {
+      "symbol": "FTM",
+      "coingecko_id": "fantom",
+      "category": "l1"
+    },
+    {
+      "symbol": "RUNE",
+      "coingecko_id": "thorchain",
+      "category": "defi"
+    },
+    {
+      "symbol": "ZIL",
+      "coingecko_id": "zilliqa",
+      "category": "l1"
+    },
+    {
+      "symbol": "ENJ",
+      "coingecko_id": "enjincoin",
+      "category": "gaming"
+    },
+    {
+      "symbol": "CHZ",
+      "coingecko_id": "chiliz",
+      "category": "gaming"
+    },
+    {
+      "symbol": "BAT",
+      "coingecko_id": "basic-attention-token",
+      "category": "utility"
+    },
+    {
+      "symbol": "ZEC",
+      "coingecko_id": "zcash",
+      "category": "privacy"
+    },
+    {
+      "symbol": "DASH",
+      "coingecko_id": "dash",
+      "category": "majors"
+    },
+    {
+      "symbol": "NEO",
+      "coingecko_id": "neo",
+      "category": "l1"
+    },
+    {
+      "symbol": "WAVES",
+      "coingecko_id": "waves",
+      "category": "l1"
+    },
+    {
+      "symbol": "IOTA",
+      "coingecko_id": "iota",
+      "category": "l1"
+    },
+    {
+      "symbol": "COMP",
+      "coingecko_id": "compound-governance-token",
+      "category": "defi"
+    },
+    {
+      "symbol": "CRV",
+      "coingecko_id": "curve-dao-token",
+      "category": "defi"
+    },
+    {
+      "symbol": "EGLD",
+      "coingecko_id": "elrond-erd-2",
+      "category": "l1"
+    },
+    {
+      "symbol": "GRT",
+      "coingecko_id": "the-graph",
+      "category": "infra"
+    },
+    {
+      "symbol": "HBAR",
+      "coingecko_id": "hedera-hashgraph",
+      "category": "l1"
+    },
+    {
+      "symbol": "MKR",
+      "coingecko_id": "maker",
+      "category": "defi"
+    },
+    {
+      "symbol": "ONE",
+      "coingecko_id": "harmony",
+      "category": "l1"
+    },
+    {
+      "symbol": "SNX",
+      "coingecko_id": "havven",
+      "category": "defi"
+    },
+    {
+      "symbol": "SUSHI",
+      "coingecko_id": "sushi",
+      "category": "defi"
+    },
+    {
+      "symbol": "YFI",
+      "coingecko_id": "yearn-finance",
+      "category": "defi"
+    },
+    {
+      "symbol": "LUNA",
+      "coingecko_id": "terra-luna",
+      "category": "delisted_collapsed"
+    },
+    {
+      "symbol": "FTT",
+      "coingecko_id": "ftx-token",
+      "category": "delisted_collapsed"
+    },
+    {
+      "symbol": "BCH",
+      "coingecko_id": "bitcoin-cash",
+      "category": "majors_offvenue"
+    },
+    {
+      "symbol": "BSV",
+      "coingecko_id": "bitcoin-cash-sv",
+      "category": "delisted_offvenue"
+    },
+    {
+      "symbol": "LEO",
+      "coingecko_id": "leo-token",
+      "category": "exchange_token_offvenue"
+    },
+    {
+      "symbol": "HT",
+      "coingecko_id": "huobi-token",
+      "category": "exchange_token_offvenue"
+    },
+    {
+      "symbol": "CRO",
+      "coingecko_id": "crypto-com-chain",
+      "category": "exchange_token_offvenue"
+    },
+    {
+      "symbol": "OKB",
+      "coingecko_id": "okb",
+      "category": "exchange_token_offvenue"
+    },
+    {
+      "symbol": "KCS",
+      "coingecko_id": "kucoin-shares",
+      "category": "exchange_token_offvenue"
+    },
+    {
+      "symbol": "XMR",
+      "coingecko_id": "monero",
+      "category": "delisted_privacy"
+    },
+    {
+      "symbol": "SHIB",
+      "coingecko_id": "shiba-inu",
+      "category": "meme"
+    },
+    {
+      "symbol": "APE",
+      "coingecko_id": "apecoin",
+      "category": "gaming"
+    },
+    {
+      "symbol": "ARB",
+      "coingecko_id": "arbitrum",
+      "category": "l2"
+    },
+    {
+      "symbol": "OP",
+      "coingecko_id": "optimism",
+      "category": "l2"
+    },
+    {
+      "symbol": "INJ",
+      "coingecko_id": "injective-protocol",
+      "category": "defi"
+    },
+    {
+      "symbol": "LDO",
+      "coingecko_id": "lido-dao",
+      "category": "defi"
+    },
+    {
+      "symbol": "TON",
+      "coingecko_id": "the-open-network",
+      "category": "l1"
+    },
+    {
+      "symbol": "ANC",
+      "coingecko_id": "anchor-protocol",
+      "category": "delisted_collapsed"
+    },
+    {
+      "symbol": "MIR",
+      "coingecko_id": "mirror-protocol",
+      "category": "delisted_collapsed"
+    },
+    {
+      "symbol": "SRM",
+      "coingecko_id": "serum",
+      "category": "delisted_collapsed"
+    },
+    {
+      "symbol": "1INCH",
+      "coingecko_id": "1inch",
+      "category": "defi"
+    },
+    {
+      "symbol": "FET",
+      "coingecko_id": "fetch-ai",
+      "category": "ai"
+    },
+    {
+      "symbol": "KAVA",
+      "coingecko_id": "kava",
+      "category": "defi"
+    },
+    {
+      "symbol": "STX",
+      "coingecko_id": "blockstack",
+      "category": "l2"
+    },
+    {
+      "symbol": "DYDX",
+      "coingecko_id": "dydx",
+      "category": "defi"
+    },
+    {
+      "symbol": "RNDR",
+      "coingecko_id": "render-token",
+      "category": "infra"
+    },
+    {
+      "symbol": "MASK",
+      "coingecko_id": "mask-network",
+      "category": "infra"
+    },
+    {
+      "symbol": "ENS",
+      "coingecko_id": "ethereum-name-service",
+      "category": "infra"
+    },
+    {
+      "symbol": "IMX",
+      "coingecko_id": "immutable-x",
+      "category": "gaming"
+    },
+    {
+      "symbol": "AGIX",
+      "coingecko_id": "singularitynet",
+      "category": "ai"
+    },
+    {
+      "symbol": "GMX",
+      "coingecko_id": "gmx",
+      "category": "defi"
+    },
+    {
+      "symbol": "BLUR",
+      "coingecko_id": "blur",
+      "category": "infra"
+    },
+    {
+      "symbol": "PEPE",
+      "coingecko_id": "pepe",
+      "category": "meme"
+    },
+    {
+      "symbol": "TIA",
+      "coingecko_id": "celestia",
+      "category": "l1"
+    },
+    {
+      "symbol": "WLD",
+      "coingecko_id": "worldcoin-wld",
+      "category": "infra"
+    },
+    {
+      "symbol": "JUP",
+      "coingecko_id": "jupiter-exchange-solana",
+      "category": "defi_solana"
+    },
+    {
+      "symbol": "ENA",
+      "coingecko_id": "ethena",
+      "category": "defi"
+    },
+    {
+      "symbol": "PYTH",
+      "coingecko_id": "pyth-network",
+      "category": "infra_solana"
+    },
+    {
+      "symbol": "ORDI",
+      "coingecko_id": "ordinals",
+      "category": "btc_brc20"
+    },
+    {
+      "symbol": "SUI",
+      "coingecko_id": "sui",
+      "category": "l1"
+    },
+    {
+      "symbol": "SEI",
+      "coingecko_id": "sei-network",
+      "category": "l1"
+    },
+    {
+      "symbol": "JTO",
+      "coingecko_id": "jito-governance-token",
+      "category": "defi_solana"
+    },
+    {
+      "symbol": "BONK",
+      "coingecko_id": "bonk",
+      "category": "meme_solana"
+    },
+    {
+      "symbol": "WIF",
+      "coingecko_id": "dogwifcoin",
+      "category": "meme_solana"
+    },
+    {
+      "symbol": "DYM",
+      "coingecko_id": "dymension",
+      "category": "l1"
+    },
+    {
+      "symbol": "STRK",
+      "coingecko_id": "starknet",
+      "category": "l2"
+    },
+    {
+      "symbol": "MANTA",
+      "coingecko_id": "manta-network",
+      "category": "l2"
+    },
+    {
+      "symbol": "A2Z",
+      "coingecko_id": "a2z",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "ACA",
+      "coingecko_id": "aca",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "AERGO",
+      "coingecko_id": "aergo",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "AION",
+      "coingecko_id": "aion",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "AKRO",
+      "coingecko_id": "akro",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "ALPACA",
+      "coingecko_id": "alpaca",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "ALPHA",
+      "coingecko_id": "alpha",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "AMB",
+      "coingecko_id": "amb",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "ANT",
+      "coingecko_id": "ant",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "ANY",
+      "coingecko_id": "any",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "AST",
+      "coingecko_id": "ast",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "AUTO",
+      "coingecko_id": "auto",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "BADGER",
+      "coingecko_id": "badger",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "BAKE",
+      "coingecko_id": "bake",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "BAL",
+      "coingecko_id": "bal",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "BEAM",
+      "coingecko_id": "beam",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "BETA",
+      "coingecko_id": "beta",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "BIFI",
+      "coingecko_id": "bifi",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "BLZ",
+      "coingecko_id": "blz",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "BNX",
+      "coingecko_id": "bnx",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "BOND",
+      "coingecko_id": "bond",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "BSW",
+      "coingecko_id": "bsw",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "BTT",
+      "coingecko_id": "btt",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "BURGER",
+      "coingecko_id": "burger",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "BZRX",
+      "coingecko_id": "bzrx",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "CHESS",
+      "coingecko_id": "chess",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "CLV",
+      "coingecko_id": "clv",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "COCOS",
+      "coingecko_id": "cocos",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "COMBO",
+      "coingecko_id": "combo",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "CREAM",
+      "coingecko_id": "cream",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "CTXC",
+      "coingecko_id": "ctxc",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "CVP",
+      "coingecko_id": "cvp",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "DAR",
+      "coingecko_id": "dar",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "DATA",
+      "coingecko_id": "data",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "DEGO",
+      "coingecko_id": "dego",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "DENT",
+      "coingecko_id": "dent",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "DF",
+      "coingecko_id": "df",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "DNT",
+      "coingecko_id": "dnt",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "DOCK",
+      "coingecko_id": "dock",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "DREP",
+      "coingecko_id": "drep",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "ELF",
+      "coingecko_id": "elf",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "EPS",
+      "coingecko_id": "eps",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "EPX",
+      "coingecko_id": "epx",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "ERD",
+      "coingecko_id": "erd",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "ERN",
+      "coingecko_id": "ern",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "FIO",
+      "coingecko_id": "fio",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "FIRO",
+      "coingecko_id": "firo",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "FIS",
+      "coingecko_id": "fis",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "FLM",
+      "coingecko_id": "flm",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "FOR",
+      "coingecko_id": "for",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "FORTH",
+      "coingecko_id": "forth",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "FRONT",
+      "coingecko_id": "front",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "FUN",
+      "coingecko_id": "fun",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "FXS",
+      "coingecko_id": "fxs",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "GAL",
+      "coingecko_id": "gal",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "GFT",
+      "coingecko_id": "gft",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "GHST",
+      "coingecko_id": "ghst",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "GTO",
+      "coingecko_id": "gto",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "GXS",
+      "coingecko_id": "gxs",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "HARD",
+      "coingecko_id": "hard",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "HC",
+      "coingecko_id": "hc",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "HIFI",
+      "coingecko_id": "hifi",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "HNT",
+      "coingecko_id": "hnt",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "HOOK",
+      "coingecko_id": "hook",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "IDEX",
+      "coingecko_id": "idex",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "IRIS",
+      "coingecko_id": "iris",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "KDA",
+      "coingecko_id": "kda",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "KEEP",
+      "coingecko_id": "keep",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "KEY",
+      "coingecko_id": "key",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "KLAY",
+      "coingecko_id": "klay",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "KMD",
+      "coingecko_id": "kmd",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "KP3R",
+      "coingecko_id": "kp3r",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "LEND",
+      "coingecko_id": "lend",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "LEVER",
+      "coingecko_id": "lever",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "LINA",
+      "coingecko_id": "lina",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "LIT",
+      "coingecko_id": "lit",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "LOKA",
+      "coingecko_id": "loka",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "LOOM",
+      "coingecko_id": "loom",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "LRC",
+      "coingecko_id": "lrc",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "LTO",
+      "coingecko_id": "lto",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "MC",
+      "coingecko_id": "mc",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "MCO",
+      "coingecko_id": "mco",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "MDT",
+      "coingecko_id": "mdt",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "MDX",
+      "coingecko_id": "mdx",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "MFT",
+      "coingecko_id": "mft",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "MITH",
+      "coingecko_id": "mith",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "MOB",
+      "coingecko_id": "mob",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "MULTI",
+      "coingecko_id": "multi",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "NANO",
+      "coingecko_id": "nano",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "NBS",
+      "coingecko_id": "nbs",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "NEBL",
+      "coingecko_id": "nebl",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "NKN",
+      "coingecko_id": "nkn",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "NPXS",
+      "coingecko_id": "npxs",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "NTRN",
+      "coingecko_id": "ntrn",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "NU",
+      "coingecko_id": "nu",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "NULS",
+      "coingecko_id": "nuls",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "OAX",
+      "coingecko_id": "oax",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "OCEAN",
+      "coingecko_id": "ocean",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "OM",
+      "coingecko_id": "om",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "OMG",
+      "coingecko_id": "omg",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "OMNI",
+      "coingecko_id": "omni",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "OOKI",
+      "coingecko_id": "ooki",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "ORN",
+      "coingecko_id": "orn",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "OXT",
+      "coingecko_id": "oxt",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "PDA",
+      "coingecko_id": "pda",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "PERL",
+      "coingecko_id": "perl",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "PERP",
+      "coingecko_id": "perp",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "PLA",
+      "coingecko_id": "pla",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "PNT",
+      "coingecko_id": "pnt",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "POLS",
+      "coingecko_id": "pols",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "POLY",
+      "coingecko_id": "poly",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "PROS",
+      "coingecko_id": "pros",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "RAMP",
+      "coingecko_id": "ramp",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "RDNT",
+      "coingecko_id": "rdnt",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "REEF",
+      "coingecko_id": "reef",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "REI",
+      "coingecko_id": "rei",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "REN",
+      "coingecko_id": "ren",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "REP",
+      "coingecko_id": "rep",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "RGT",
+      "coingecko_id": "rgt",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "SLF",
+      "coingecko_id": "slf",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "SNT",
+      "coingecko_id": "snt",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "STMX",
+      "coingecko_id": "stmx",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "STORM",
+      "coingecko_id": "storm",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "STPT",
+      "coingecko_id": "stpt",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "STRAT",
+      "coingecko_id": "strat",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "SXP",
+      "coingecko_id": "sxp",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "TCT",
+      "coingecko_id": "tct",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "TOMO",
+      "coingecko_id": "tomo",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "TORN",
+      "coingecko_id": "torn",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "TRIBE",
+      "coingecko_id": "tribe",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "TROY",
+      "coingecko_id": "troy",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "TRU",
+      "coingecko_id": "tru",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "TVK",
+      "coingecko_id": "tvk",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "UFT",
+      "coingecko_id": "uft",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "UNFI",
+      "coingecko_id": "unfi",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "UTK",
+      "coingecko_id": "utk",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "VEN",
+      "coingecko_id": "ven",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "VGX",
+      "coingecko_id": "vgx",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "VIB",
+      "coingecko_id": "vib",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "VIDT",
+      "coingecko_id": "vidt",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "VITE",
+      "coingecko_id": "vite",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "VOXEL",
+      "coingecko_id": "voxel",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "WAN",
+      "coingecko_id": "wan",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "WING",
+      "coingecko_id": "wing",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "WNXM",
+      "coingecko_id": "wnxm",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "WRX",
+      "coingecko_id": "wrx",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "WTC",
+      "coingecko_id": "wtc",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "XEM",
+      "coingecko_id": "xem",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "XZC",
+      "coingecko_id": "xzc",
+      "category": "delisted_batch_2026"
+    },
+    {
+      "symbol": "YFII",
+      "coingecko_id": "yfii",
+      "category": "delisted_batch_2026"
+    }
+  ]
+}
