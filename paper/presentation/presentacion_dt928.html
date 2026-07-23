@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HRP en Criptomonedas — DT 928 · UCEMA</title>
+<style>
+  :root{
+    --paper:#F5F6F8;
+    --surface:#FFFFFF;
+    --line:#E3E7ED;
+    --ink:#1B2531;
+    --ink2:#5A6675;
+    --muted:#8B95A3;
+    --indigo:#3056C9;
+    --indigo-soft:#E8EDFB;
+    --amber:#B07E10;
+    --red:#C03538;
+    --teal:#0B8F80;
+    --slate-dot:#77808C;
+    --band:#E9EDF3;
+    --serif:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:16px;
+    line-height:1.5;
+    overflow:hidden;
+  }
+  /* ---------- deck chrome ---------- */
+  #progress{
+    position:fixed;top:0;left:0;height:4px;width:0;
+    background:var(--indigo);z-index:50;transition:width .25s ease;
+  }
+  #hud{
+    position:fixed;right:20px;bottom:14px;z-index:50;
+    font-family:var(--mono);font-size:12px;color:var(--muted);
+    display:flex;gap:16px;align-items:center;
+  }
+  #hud button{
+    font-family:var(--mono);font-size:12px;color:var(--ink2);
+    background:var(--surface);border:1px solid var(--line);border-radius:6px;
+    padding:4px 10px;cursor:pointer;
+  }
+  #hud button:hover{border-color:var(--indigo);color:var(--indigo)}
+  #hud button:focus-visible{outline:2px solid var(--indigo);outline-offset:2px}
+  /* ---------- slides ---------- */
+  .slide{
+    display:none;
+    position:fixed;inset:0;
+    padding:min(6vh,56px) min(6vw,72px) min(10vh,88px);
+    background:var(--paper);
+    overflow:auto;
+  }
+  .slide.active{display:flex;flex-direction:column;justify-content:center}
+  .inner{width:100%;max-width:1080px;margin:0 auto}
+  .eyebrow{
+    font-family:var(--mono);font-size:12px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--indigo);margin-bottom:14px;
+  }
+  h1{
+    font-family:var(--serif);font-weight:600;
+    font-size:clamp(30px,4.6vw,54px);line-height:1.12;
+    letter-spacing:-.01em;margin-bottom:18px;
+  }
+  h2{
+    font-family:var(--serif);font-weight:600;
+    font-size:clamp(24px,3.2vw,38px);line-height:1.15;
+    letter-spacing:-.01em;margin-bottom:22px;
+  }
+  .sub{font-size:clamp(15px,1.4vw,19px);color:var(--ink2);max-width:62ch}
+  .kicker{
+    font-family:var(--serif);font-style:italic;
+    font-size:clamp(17px,1.7vw,22px);color:var(--ink2);
+    border-left:3px solid var(--indigo);padding-left:16px;margin:22px 0 0;
+    max-width:60ch;
+  }
+  ul.points{list-style:none;margin-top:22px}
+  ul.points li{
+    padding:10px 0 10px 26px;position:relative;
+    font-size:clamp(15px,1.45vw,19px);max-width:66ch;
+  }
+  ul.points li::before{
+    content:"";position:absolute;left:2px;top:1.05em;
+    width:10px;height:2px;background:var(--indigo);
+  }
+  strong{font-weight:650}
+  .mono{font-family:var(--mono);font-size:.92em}
+  .pos{color:var(--teal)} .neg{color:var(--red)}
+  /* stat tiles */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:26px}
+  .tile{
+    background:var(--surface);border:1px solid var(--line);border-radius:10px;
+    padding:18px 20px 15px;
+  }
+  .tile .n{
+    font-family:var(--serif);font-size:clamp(26px,3vw,40px);
+    font-weight:600;letter-spacing:-.02em;line-height:1.05;
+  }
+  .tile .l{font-size:13px;color:var(--ink2);margin-top:6px;line-height:1.35}
+  /* family cards */
+  .fams{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:24px}
+  .fam{
+    background:var(--surface);border:1px solid var(--line);border-radius:10px;
+    padding:16px 18px;
+  }
+  .fam h3{font-size:15px;font-weight:650;display:flex;align-items:baseline;gap:8px}
+  .fam h3 .count{
+    font-family:var(--mono);font-size:12px;color:var(--indigo);
+    background:var(--indigo-soft);border-radius:5px;padding:1px 7px;
+  }
+  .fam p{font-size:13.5px;color:var(--ink2);margin-top:6px;line-height:1.45}
+  .fam .tk{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:8px;display:block;line-height:1.6}
+  /* two-column layout */
+  .cols{display:grid;grid-template-columns:1.05fr .95fr;gap:44px;align-items:center}
+  @media (max-width:880px){.cols{grid-template-columns:1fr;gap:24px}}
+  /* verdict slide */
+  .steps{margin-top:26px;display:grid;gap:12px}
+  .step{
+    background:var(--surface);border:1px solid var(--line);border-radius:10px;
+    padding:16px 20px;display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;
+  }
+  .step .tag{
+    font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink2);width:150px;
+  }
+  .step .what{font-size:15px;max-width:52ch}
+  .step .p{font-family:var(--mono);font-size:20px;font-weight:600;text-align:right;white-space:nowrap}
+  .step.sig{border-left:4px solid var(--teal)}
+  .step.nosig{border-left:4px solid var(--red)}
+  .verdict{
+    margin-top:24px;background:var(--ink);color:#F3F5F8;border-radius:10px;
+    padding:20px 24px;font-family:var(--serif);
+    font-size:clamp(17px,1.8vw,23px);line-height:1.4;
+  }
+  .verdict .mono{color:#AFC0E8}
+  /* charts */
+  figure{margin-top:26px}
+  figure svg{width:100%;height:auto;display:block}
+  figcaption{font-size:12.5px;color:var(--muted);margin-top:10px;max-width:80ch}
+  .legend{display:flex;flex-wrap:wrap;gap:18px;margin-top:14px;font-size:13px;color:var(--ink2)}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .legend i{width:11px;height:11px;border-radius:50%;display:inline-block}
+  /* title slide */
+  .titlewrap{display:grid;grid-template-columns:1.25fr .75fr;gap:40px;align-items:center}
+  @media (max-width:880px){.titlewrap{grid-template-columns:1fr}.dendro{display:none}}
+  .authors{margin-top:26px;font-size:15.5px;color:var(--ink2)}
+  .authors b{color:var(--ink);font-weight:600}
+  .keyshint{margin-top:34px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  /* notes drawer */
+  #notes{
+    position:fixed;left:0;right:0;bottom:0;z-index:40;
+    background:var(--ink);color:#E8ECF2;
+    padding:16px 28px 20px;max-height:34vh;overflow:auto;
+    font-size:14.5px;line-height:1.55;
+    transform:translateY(100%);transition:transform .22s ease;
+    border-top:3px solid var(--indigo);
+  }
+  body.show-notes #notes{transform:translateY(0)}
+  #notes .nt{font-family:var(--mono);font-size:11px;letter-spacing:.12em;
+    text-transform:uppercase;color:#9FB4E4;margin-bottom:6px}
+  #notes p{max-width:100ch}
+  aside.notes{display:none}
+  @media (prefers-reduced-motion:reduce){
+    #progress,#notes{transition:none}
+  }
+  /* ---------- print: full handout with notes ---------- */
+  @media print{
+    body{overflow:visible;background:#fff}
+    #hud,#progress,#notes{display:none}
+    .slide{display:block!important;position:static;page-break-after:always;
+      padding:40px 48px;overflow:visible;background:#fff}
+    aside.notes{
+      display:block;margin-top:26px;border:1px solid var(--line);
+      border-radius:8px;padding:14px 18px;font-size:13px;color:var(--ink2);
+    }
+    aside.notes::before{
+      content:"Notas del orador";display:block;font-family:var(--mono);
+      font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+      color:var(--indigo);margin-bottom:6px;
+    }
+  }
+</style>
+</head>
+<body data-palette="#3056C9,#B07E10,#C03538,#0B8F80">
+
+<div id="progress"></div>
+
+<!-- ============ 1 · TITLE ============ -->
+<section class="slide active">
+  <div class="inner titlewrap">
+    <div>
+      <div class="eyebrow">UCEMA · Serie Documentos de Trabajo · DT 928 · Junio 2026</div>
+      <h1>Variantes de Hierarchical Risk Parity para carteras de criptomonedas</h1>
+      <p class="sub">Denoising, detoning, dependencia de cola, <em>embeddings</em> e inferencia estadística, 2020&ndash;2026.</p>
+      <p class="authors"><b>Alan Matys</b> · <b>Federico Martin Rodriguez</b> · <b>Emiliano Delfau</b><br>
+      Universidad del CEMA</p>
+      <p class="keyshint">&larr; &rarr; navegar &nbsp;·&nbsp; N notas del orador &nbsp;·&nbsp; imprimir = handout con notas</p>
+    </div>
+    <svg class="dendro" viewBox="0 0 300 340" aria-hidden="true">
+      <!-- dendrogram motif -->
+      <g stroke="#C9D2DE" stroke-width="2" fill="none">
+        <path d="M40 40 H90 V110 M140 40 H90"/>
+        <path d="M90 75 H190 V180 M240 130 H190 M240 130 V96"/>
+        <path d="M190 180 H120 V250"/>
+        <path d="M60 310 H120 M180 310 H120 V250"/>
+        <path d="M240 96 H270"/>
+      </g>
+      <g fill="#3056C9">
+        <circle cx="40" cy="40" r="6"/><circle cx="140" cy="40" r="6"/>
+        <circle cx="270" cy="96" r="6"/>
+        <circle cx="60" cy="310" r="6"/><circle cx="180" cy="310" r="6"/>
+      </g>
+      <g fill="#77808C">
+        <circle cx="90" cy="110" r="4"/><circle cx="190" cy="180" r="4"/><circle cx="120" cy="250" r="4"/>
+      </g>
+    </svg>
+  </div>
+  <aside class="notes">[0:00&ndash;0:40] Buenas. Este trabajo es el documento DT 928 de la serie de UCEMA. La pregunta que atraviesa todo el paper es simple de enunciar: cuando uno construye una cartera jerárquica tipo HRP, ¿qué decisión de diseño importa de verdad? Somos tres autores de UCEMA. La presentación dura unos diez minutos: tres de método, cuatro de resultados, y cierro con las conclusiones.</aside>
+</section>
+
+<!-- ============ 2 · LA PREGUNTA ============ -->
+<section class="slide">
+  <div class="inner">
+    <div class="eyebrow">La pregunta</div>
+    <h2>En una cartera jerárquica, ¿qué mueve el desempeño:<br>el <em>clustering</em> o la <em>asignación</em>?</h2>
+    <ul class="points">
+      <li><strong>HRP</strong> (López de Prado, 2016) arma un árbol jerárquico a partir de la matriz de correlación y reparte el capital de arriba hacia abajo por varianza inversa: no invierte la covarianza, no estima retornos.</li>
+      <li>Toda variante de HRP toca uno de dos pasos: <strong>cómo se construye el árbol</strong> (correlación, distancia, embedding) o <strong>cómo se asigna dentro del árbol</strong>.</li>
+      <li>Las criptomonedas son el banco de pruebas exigente: alta correlación entre activos, colas pesadas, y una tasa altísima de deslistado que castiga cualquier backtest ingenuo.</li>
+    </ul>
+    <p class="kicker">Probamos las dos familias de variantes por separado, bajo un mismo protocolo de inferencia estadística.</p>
+  </div>
+  <aside class="notes">[0:40&ndash;1:40] HRP tiene dos piezas separables. La primera es el clustering: qué matriz de correlación uso, qué distancia, cómo armo el dendrograma. La segunda es la asignación: una vez que tengo el árbol, cómo reparto el capital. Casi toda la literatura de variantes mezcla las dos cosas. Nuestro diseño experimental las separa a propósito: variamos una, congelamos la otra, y medimos. Y elegimos cripto no por moda sino porque es el entorno más hostil: correlaciones de 0.8, colas pesadas y monedas que desaparecen, ideal para detectar diferencias de diseño si existen.</aside>
+</section>
+
+<!-- ============ 3 · DATOS ============ -->
+<section class="slide">
+  <div class="inner">
+    <div class="eyebrow">Datos</div>
+    <h2>Un universo <em>point-in-time</em>, corregido por sesgo de supervivencia</h2>
+    <p class="sub">Binance USDT spot, top 50 por volumen a cada fin de mes, con filtros de edad y liquidez. La cartera solo ve lo que existía y era tradeable en cada fecha.</p>
+    <div class="tiles">
+      <div class="tile"><div class="n">146</div><div class="l">símbolos que alguna vez integraron el universo</div></div>
+      <div class="tile"><div class="n neg">97</div><div class="l">de esos 146 fueron deslistados dentro de la ventana (incluye LUNA y FTT)</div></div>
+      <div class="tile"><div class="n">76</div><div class="l">rebalanceos mensuales, feb 2020 &ndash; may 2026</div></div>
+      <div class="tile"><div class="n">12 <span style="font-size:.55em">bps</span></div><div class="l">costo por rebalanceo (fee + slippage), con grilla de sensibilidad y liquidación forzada a 2&times;</div></div>
+    </div>
+    <p class="kicker">El dataset previo tenía solo 50 monedas sobrevivientes: por construcción no podía capturar el riesgo de deslistado.</p>
+  </div>
+  <aside class="notes">[1:40&ndash;2:40] El punto diferencial del dataset: no es una lista de las monedas que existen hoy proyectada hacia atrás. Reconstruimos el universo mes a mes: a cada fecha de rebalanceo, el top 50 por volumen entre lo que estaba listado y cumplía filtros de edad y liquidez en ese momento. De los 146 símbolos que alguna vez entraron, 97 salieron durante la ventana, incluyendo los colapsos de LUNA y FTT. Las posiciones que salen se liquidan al doble de slippage. Esto importa porque el sesgo de supervivencia infla sistemáticamente los backtests de cripto, y es la crítica número uno de cualquier referee.</aside>
+</section>
+
+<!-- ============ 4 · EL MAPA ============ -->
+<section class="slide">
+  <div class="inner">
+    <div class="eyebrow">Diseño experimental</div>
+    <h2>27 estrategias, cinco familias, un benchmark pasivo</h2>
+    <div class="fams">
+      <div class="fam">
+        <h3>Familia HRP <span class="count">13</span></h3>
+        <p>Mismo esquema de asignación, distinto árbol: denoising Marchenko&ndash;Pastur, detoning, correlación parcial, EWMA, dependencia de cola, shrinkage Ledoit&ndash;Wolf&hellip; y 4 variantes cuya distancia de clustering se <em>aprende</em> con embeddings.</p>
+        <span class="tk">HRP · Denoised · Detoned · TailDep · PathSig · TS2Vec &hellip;</span>
+      </div>
+      <div class="fam">
+        <h3>Basadas en riesgo <span class="count">5</span></h3>
+        <p>Los comparadores clásicos sin jerarquía, más CRISP: shrinkage iterativo de la correlación, sin señal de retorno.</p>
+        <span class="tk">MVP · IVP · ERC · MaxDiv · CRISP</span>
+      </div>
+      <div class="fam">
+        <h3>Clustering anidado <span class="count">4</span></h3>
+        <p>Cambian el paso de asignación dentro del árbol: mínima varianza anidada y variantes.</p>
+        <span class="tk">HERC · NCO · NCO_RT · NCO_CRISP</span>
+      </div>
+      <div class="fam">
+        <h3>Momentum <span class="count">3</span></h3>
+        <p>Reglas de momentum transversal y gestionado por riesgo.</p>
+        <span class="tk">MOM_HRP · CS_MOM · RM_MOM</span>
+      </div>
+      <div class="fam">
+        <h3>Sensibles a señal <span class="count">2</span></h3>
+        <p>Pronósticos XGBoost <em>walk-forward</em> alimentando la asignación (NCOML) o el árbol (HRP-&Sigma;&mu;).</p>
+        <span class="tk">NCOML · HRPSigmaMu</span>
+      </div>
+      <div class="fam">
+        <h3>Benchmark <span class="count">+1</span></h3>
+        <p>HODL_BTC: comprar y mantener Bitcoin. No es una estrategia construida, es la vara pasiva.</p>
+        <span class="tk">HODL_BTC</span>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">[2:40&ndash;3:40] El mapa completo: 27 estrategias construidas más Bitcoin pasivo. Lo importante es la lógica de la grilla, no memorizar los nombres. Las 13 de la familia HRP solo cambian el árbol y sirven para testear el paso de clustering; ahí entran también cuatro variantes donde la distancia se aprende con representaciones del camino de retornos: firmas de camino, node2vec y dos codificadores contrastivos. Las familias de la derecha cambian el paso de asignación o agregan una señal de retorno. Si el clustering importa, la familia HRP debería dispersarse. Si importa la asignación, la dispersión debería aparecer entre familias.</aside>
+</section>
+
+<!-- ============ 5 · MÉTODO: INFERENCIA ============ -->
+<section class="slide">
+  <div class="inner">
+    <div class="eyebrow">Método</div>
+    <h2>No es un backtest: es un protocolo de inferencia</h2>
+    <ul class="points">
+      <li><strong>Test de Sharpe de Ledoit&ndash;Wolf estudentizado</strong> para cada estrategia contra HRP base, con bootstrap de bloques estacionario (el p-valor se lee del estadístico estudentizado, no de un percentil ingenuo).</li>
+      <li><strong>Hansen SPA</strong> sobre el conjunto completo de candidatos: ¿alguna estrategia le gana a HRP <em>después</em> de corregir por haber buscado entre 27?</li>
+      <li><strong>Deflated Sharpe Ratio</strong> y <strong>análisis de potencia</strong>: cuánta ventaja de Sharpe podía detectar este diseño (&asymp;0.25&ndash;0.28 anualizado al 80% de potencia).</li>
+      <li><strong>Barrido de 547 configuraciones</strong> de hiperparámetros del clustering, con el mismo SPA combinado: la conclusión no depende de una configuración afortunada.</li>
+    </ul>
+    <p class="kicker">Todo resultado que mostramos a continuación ya pagó el peaje de la corrección por comparaciones múltiples, o se declara cuando no lo paga.</p>
+  </div>
+  <aside class="notes">[3:40&ndash;4:40] Acá está el aporte metodológico central. La práctica estándar en esta literatura es correr N variantes y reportar la mejor con su Sharpe. Nosotros tratamos el ejercicio como un problema de inferencia con búsqueda: el test pareado de Ledoit&ndash;Wolf dice si una estrategia individual le gana al baseline; el SPA de Hansen pregunta lo difícil, que es si la mejor del conjunto le gana después de descontar que la elegimos por ser la mejor. Y el análisis de potencia pone el número honesto: con seis años de datos diarios, ventajas de Sharpe menores a 0.25 anualizado son indetectables. Eso encuadra todo lo que sigue.</aside>
+</section>
+
+<!-- ============ 6 · RESULTADO CENTRAL: LA BANDA ============ -->
+<section class="slide">
+  <div class="inner">
+    <div class="eyebrow">Resultados · ventana completa 2020&ndash;2026</div>
+    <h2>Trece variantes de clustering, una sola banda de Sharpe</h2>
+    <figure>
+      <svg id="chart-band" viewBox="0 0 960 300" role="img" aria-label="Sharpe anualizado de las 27 estrategias más Bitcoin pasivo; la familia HRP se agrupa entre 0.70 y 0.75, las estrategias de asignación se dispersan entre 0.00 y 1.06"></svg>
+      <div class="legend">
+        <span><i style="background:#77808C"></i>familia HRP (árbol distinto, misma asignación)</span>
+        <span><i style="background:#3056C9"></i>cambian la asignación</span>
+        <span><i style="background:#0B8F80"></i>señal XGBoost</span>
+        <span><i style="background:#B07E10"></i>HODL BTC</span>
+        <span><i style="background:#C03538"></i>colapso</span>
+      </div>
+      <figcaption>Sharpe anualizado, rebalanceo mensual, costos conservadores, 2020-02 a 2026-05. Cada punto es una estrategia; pase el mouse para ver el valor exacto.</figcaption>
+    </figure>
+  </div>
+  <aside class="notes">[4:40&ndash;6:00] Este es el gráfico de la tesis. Cada punto es una estrategia y el eje es el Sharpe anualizado. Miren la zona sombreada: las trece variantes de la familia HRP, con árboles construidos de trece maneras distintas, denoising, detoning, colas, embeddings aprendidos, caen todas en una banda de 0.70 a 0.75. Cambiar el árbol no mueve nada. La dispersión aparece a la derecha y a la izquierda, y siempre viene de cambiar la asignación: MVP 1.06, CRISP 0.99, NCO&ndash;CRISP 0.98, NCO 0.93. Y el punto rojo en cero es NCO con tilt de retornos por media muestral: colapsa 97%. Reemplazar esa media muestral por un pronóstico XGBoost walk-forward evita el colapso, NCOML 0.80, pero no le gana al NCO ciego a señal.</aside>
+</section>
+
+<!-- ============ 7 · ¿SOBREVIVE LA INFERENCIA? ============ -->
+<section class="slide">
+  <div class="inner">
+    <div class="eyebrow">Resultados · inferencia</div>
+    <h2>¿La ventaja de asignación sobrevive a la corrección?</h2>
+    <div class="steps">
+      <div class="step sig">
+        <span class="tag">Pareado · Ledoit&ndash;Wolf</span>
+        <span class="what">CRISP y NCO&ndash;CRISP le ganan a HRP base, en la ventana completa <em>y</em> en la post-COVID</span>
+        <span class="p" style="color:var(--teal)">p &asymp; 0.01</span>
+      </div>
+      <div class="step nosig">
+        <span class="tag">Conjunto · Hansen SPA</span>
+        <span class="what">Corregido por la búsqueda entre 27 candidatos, el test no rechaza la hipótesis nula</span>
+        <span class="p" style="color:var(--red)">p = 0.51</span>
+      </div>
+      <div class="step nosig">
+        <span class="tag">Barrido · 547 celdas</span>
+        <span class="what">Ninguna configuración de clustering escapa de la banda HRP en todo el grid de hiperparámetros</span>
+        <span class="p" style="color:var(--red)">p = 0.91</span>
+      </div>
+    </div>
+    <div class="verdict">La asignación, no el clustering, es donde aparecen las diferencias, pero ninguna ventaja sobrevive la corrección por comparaciones múltiples. El nulo habla del <span class="mono">tamaño de efecto detectable</span>, no prueba efecto cero.</div>
+  </div>
+  <aside class="notes">[6:00&ndash;7:10] La secuencia de inferencia en tres pasos. Primero: a nivel pareado, CRISP y NCO&ndash;CRISP le ganan al baseline con p cercano a 0.01, y lo repiten en la ventana post-COVID, no es un artefacto del rally. Segundo: cuando el SPA de Hansen descuenta que buscamos entre 27 candidatos, el p-valor sube a 0.51 y no se rechaza. Tercero: del lado del clustering el veredicto es todavía más limpio, 547 configuraciones y p de 0.91. La lectura honesta: la señal de que la asignación importa es consistente y direccional, pero con este tamaño de muestra queda por debajo del umbral detectable de 0.25 de Sharpe. Es un nulo informativo, no un nulo vacío.</aside>
+</section>
+
+<!-- ============ 8 · POST-COVID ============ -->
+<section class="slide">
+  <div class="inner">
+    <div class="eyebrow">Resultados · régimen post-COVID (desde 2022)</div>
+    <h2>Sin el rally, la diversificación pierde plata</h2>
+    <figure>
+      <svg id="chart-regime" viewBox="0 0 960 330" role="img" aria-label="Retorno total post-COVID por estrategia: Bitcoin pasivo más 106 por ciento, MVP más 66, CRISP y NCO-CRISP más 20, NCO menos 4, HRP base menos 60, NCO_RT menos 98"></svg>
+      <figcaption>Retorno total, ene 2022 &ndash; may 2026 (52 rebalanceos). Toda la familia HRP pierde entre 51% y 64%. SPA post-COVID: p = 0.38.</figcaption>
+    </figure>
+  </div>
+  <aside class="notes">[7:10&ndash;8:20] La prueba de estrés: repetimos todo el experimento arrancando en enero de 2022, o sea sacando el rally COVID. El cuadro se invierte. HRP base pierde 60% del capital; toda la familia HRP pierde entre 51 y 64. Los únicos que ganan plata son los que se concentran en Bitcoin: el HODL pasivo más 106, MVP más 66, CRISP y NCO&ndash;CRISP más 20. Dos lecturas: primero, el relato de que la diversificación funcionó en 2020&ndash;2026 era en buena parte un artefacto del rally; HRP diversifica riesgo pero no genera apreciación en regímenes no alcistas. Segundo, y a favor de la tesis del paper: los asignadores concentradores sostienen su ventaja en los dos regímenes, con significancia pareada también acá. Lo que hacen no es suerte del rally.</aside>
+</section>
+
+<!-- ============ 9 · CONCLUSIONES ============ -->
+<section class="slide">
+  <div class="inner">
+    <div class="eyebrow">Conclusiones</div>
+    <h2>Cuatro cosas para llevarse</h2>
+    <ul class="points">
+      <li><strong>El paso de asignación es la única decisión de diseño que mueve el desempeño.</strong> Trece árboles distintos, 547 configuraciones: una sola banda de Sharpe.</li>
+      <li><strong>Ninguna ventaja sobrevive la corrección por búsqueda.</strong> CRISP y NCO&ndash;CRISP son los candidatos más sólidos (pareado p&asymp;0.01, en ambos regímenes), pero el SPA no rechaza (p=0.51). El diseño solo podía detectar ventajas &gt;0.25 de Sharpe.</li>
+      <li><strong>El resultado es fuertemente dependiente del régimen.</strong> Post-COVID solo sobreviven los asignadores que se concentran en BTC; la diversificación jerárquica pierde 51&ndash;64% del capital.</li>
+      <li><strong>Las señales de retorno no rescatan a la asignación.</strong> El tilt por media muestral colapsa (&minus;97%); el XGBoost walk-forward evita el colapso pero no supera al NCO ciego a señal.</li>
+    </ul>
+    <p class="kicker">Paper y datos: <span class="mono">ucema.edu.ar &rarr; Documentos de Trabajo &rarr; DT 928</span> · repositorio reproducible con universo PIT, tests y barridos.</p>
+  </div>
+  <aside class="notes">[8:20&ndash;9:30] Cierro con las cuatro conclusiones. Una: en HRP, la asignación es la única palanca que mueve resultados; el árbol es notablemente insensible a cómo se lo construya. Dos: aún esa palanca queda estadísticamente por debajo del umbral detectable una vez corregida la búsqueda; reportamos el nulo con su análisis de potencia en lugar de vender al mejor candidato. Tres: el régimen manda; cualquier afirmación sobre carteras cripto que no se testee fuera del rally COVID es sospechosa. Y cuatro: meter señales de retorno no arregla nada; con media muestral destruye la cartera y con machine learning serio apenas empata. Todo el pipeline es reproducible de punta a punta. Gracias, y quedo abierto a preguntas.</aside>
+</section>
+
+<!-- ============ 10 · BACKUP / CONTACTO ============ -->
+<section class="slide">
+  <div class="inner">
+    <div class="eyebrow">Gracias</div>
+    <h2>Preguntas</h2>
+    <p class="sub" style="margin-top:6px">Matys · Rodriguez · Delfau &mdash; Universidad del CEMA</p>
+    <div class="tiles" style="margin-top:30px">
+      <div class="tile"><div class="n" style="font-size:22px">DT 928</div><div class="l">Hierarchical Risk Parity Variants for Cryptocurrency Portfolios &mdash; serie Documentos de Trabajo, UCEMA, junio 2026</div></div>
+      <div class="tile"><div class="n" style="font-size:22px">Contacto</div><div class="l mono" style="font-size:12px">alan.matys92@gmail.com<br>federico.m.rodriguez.h@gmail.com<br>ed11@ucema.edu.ar</div></div>
+      <div class="tile"><div class="n" style="font-size:22px">Backup</div><div class="l">Cadencia semanal (~330 rebalanceos), grilla de costos, estabilidad de clusters (ARI / cofenética), Deflated Sharpe: en el paper, §6</div></div>
+    </div>
+  </div>
+  <aside class="notes">[9:30&ndash;10:00] Slide de contacto y material de backup. Si preguntan por robustez: la cadencia semanal con 330 rebalanceos no cambia las conclusiones, la grilla de costos tampoco, y el paper incluye una retractación honesta sobre estabilidad de clusters respecto de la versión anterior: con el panel completo, el clustering por Pearson es más estable que el de dependencia de cola a frecuencia mensual.</aside>
+</section>
+
+<!-- notes drawer -->
+<div id="notes" role="complementary" aria-label="Notas del orador">
+  <div class="nt">Notas del orador — <span id="notes-slide"></span></div>
+  <p id="notes-body"></p>
+</div>
+
+<div id="hud">
+  <span id="counter">1 / 10</span>
+  <button id="btn-notes" type="button" title="Mostrar/ocultar notas (N)">notas</button>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  /* ---------- data ---------- */
+  var IND='#3056C9', SLA='#77808C', AMB='#B07E10', RED='#C03538', TEA='#0B8F80', INK='#1B2531';
+  // [name, sharpe, color, big label?]
+  var SHARPE=[
+    ['MVP',1.057,IND,1],['CRISP',0.989,IND,1],['NCO_CRISP',0.977,IND,1],['NCO',0.933,IND,1],
+    ['HODL_BTC',0.868,AMB,1],['NCOML',0.804,TEA,1],
+    ['HRP_Dynamic_94',0.749,SLA,0],['HRP_ShrunkCov',0.746,SLA,0],['HRP (base)',0.741,SLA,0],
+    ['HRP_VolStd',0.735,SLA,0],['MOM_HRP',0.726,SLA,0],['HRP_PartialCorr',0.720,SLA,0],
+    ['MaxDiv',0.719,SLA,0],['HRP_PathSig',0.714,SLA,0],['HERC',0.712,SLA,0],
+    ['HRP_Denoised',0.712,SLA,0],['HRP_Contrastive',0.710,SLA,0],['HRP_Detoned',0.708,SLA,0],
+    ['HRP_TailDep',0.708,SLA,0],['HRP_NodeEmbed',0.705,SLA,0],['HRP_TS2Vec',0.703,SLA,0],
+    ['HRP_TailDepShrunk',0.701,SLA,0],['IVP',0.697,SLA,0],['CS_MOM',0.663,SLA,0],
+    ['RM_MOM',0.663,SLA,0],['ERC',0.663,SLA,0],
+    ['HRPSigmaMu',0.607,TEA,1],['NCO_RT',0.003,RED,1]
+  ];
+  var REGIME=[
+    ['HODL_BTC',106,AMB],['MVP',66,IND],['NCO_CRISP',20,IND],['CRISP',20,IND],
+    ['NCO',-4,IND],['RM_MOM',-19,SLA],['HRP (base)',-60,SLA],['NCO_RT',-98,RED]
+  ];
+  var svgNS='http://www.w3.org/2000/svg';
+  function el(tag,attrs,parent,text){
+    var e=document.createElementNS(svgNS,tag);
+    for(var k in attrs) e.setAttribute(k,attrs[k]);
+    if(text!=null) e.textContent=text;
+    if(parent) parent.appendChild(e);
+    return e;
+  }
+  /* ---------- chart 1: sharpe strip ---------- */
+  function bandChart(){
+    var svg=document.getElementById('chart-band'); if(!svg) return;
+    svg.setAttribute('viewBox','0 0 960 372');
+    var X0=30, X1=930, Y=178, R=7, AX=308;
+    var xmin=-0.04, xmax=1.13;
+    function x(v){ return X0+(v-xmin)/(xmax-xmin)*(X1-X0); }
+    // band shading for the HRP cluster
+    var bandLo=0.655, bandHi=0.755;
+    el('rect',{x:x(bandLo),y:64,width:x(bandHi)-x(bandLo),height:212,fill:'#E9EDF3',rx:8},svg);
+    el('text',{x:(x(bandLo)+x(bandHi))/2,y:50,'text-anchor':'middle',fill:'#5A6675',
+      'font-size':'15','font-weight':'600','font-family':'inherit'},svg,'la banda HRP · 0.66–0.75');
+    // axis
+    el('line',{x1:X0,y1:AX,x2:X1,y2:AX,stroke:'#D5DAE2','stroke-width':1},svg);
+    [0,0.25,0.5,0.75,1.0].forEach(function(t){
+      el('line',{x1:x(t),y1:AX-4,x2:x(t),y2:AX+4,stroke:'#B9C1CC','stroke-width':1},svg);
+      el('text',{x:x(t),y:AX+22,'text-anchor':'middle',fill:'#8B95A3','font-size':'13',
+        'font-family':'ui-monospace,Menlo,monospace'},svg,t.toFixed(2));
+    });
+    el('text',{x:X1,y:AX+44,'text-anchor':'end',fill:'#8B95A3','font-size':'13'},svg,'Sharpe anualizado →');
+    // beeswarm: greedy vertical stacking
+    var placed=[];
+    var sorted=SHARPE.slice().sort(function(a,b){return a[1]-b[1];});
+    sorted.forEach(function(d){
+      var cx=x(d[1]), row=0, dir=1, tries=0;
+      function collides(cy){
+        return placed.some(function(p){
+          var dx=p[0]-cx, dy=p[1]-cy;
+          return dx*dx+dy*dy < (2*R+2)*(2*R+2);
+        });
+      }
+      var cy=Y;
+      while(collides(cy) && tries<20){
+        row++; dir=-dir; tries++;
+        cy=Y+dir*Math.ceil(row/2)*(2*R+3);
+      }
+      placed.push([cx,cy]);
+      var g=el('g',{},svg);
+      var c=el('circle',{cx:cx,cy:cy,r:R,fill:d[2]},g);
+      if(d[2]==='#77808C') c.setAttribute('fill-opacity','0.82');
+      el('title',{},g,d[0]+' — Sharpe '+d[1].toFixed(3));
+      d.push(cx,cy);
+    });
+    // direct labels for the escapees: fixed rows so nothing collides
+    var NEAR_UP=152, FAR_UP=124, NEAR_DN=212, FAR_DN=240;
+    var labels={
+      'NCO_RT':NEAR_UP,'HRPSigmaMu':NEAR_UP,'HODL_BTC':NEAR_UP,'MVP':NEAR_UP,
+      'NCOML':NEAR_DN,'NCO':NEAR_DN,'NCO_CRISP':FAR_UP,'CRISP':FAR_DN
+    };
+    SHARPE.forEach(function(d){
+      if(!d[3]) return;
+      var ly=labels[d[0]], cx=d[4], cy=d[5];
+      // leader line for far rows
+      if(ly===FAR_UP) el('line',{x1:cx,y1:cy-R-2,x2:cx,y2:ly+5,stroke:'#B9C1CC','stroke-width':1},svg);
+      if(ly===FAR_DN) el('line',{x1:cx,y1:cy+R+2,x2:cx,y2:ly-13,stroke:'#B9C1CC','stroke-width':1},svg);
+      var tx=cx;
+      if(cx<60) tx=60;
+      if(cx>890) tx=890;
+      el('text',{x:tx,y:ly,'text-anchor':'middle',fill:INK,
+        'font-size':'13.5','font-weight':'600',
+        'font-family':'ui-monospace,Menlo,monospace'},svg,
+        d[0].replace('_','–')+' '+d[1].toFixed(2));
+    });
+    // HRP baseline marker inside band
+    var base=SHARPE.filter(function(d){return d[0]==='HRP (base)';})[0];
+    el('circle',{cx:base[4],cy:base[5],r:R+3,fill:'none',stroke:INK,'stroke-width':2},svg);
+    el('text',{x:base[4],y:296,'text-anchor':'middle',fill:INK,'font-size':'13',
+      'font-weight':'600'},svg,'HRP base 0.74');
+  }
+  /* ---------- chart 2: regime bars ---------- */
+  function regimeChart(){
+    var svg=document.getElementById('chart-regime'); if(!svg) return;
+    var X0=200, X1=930, rowH=36, gap=4, top=14;
+    var vmin=-110, vmax=115;
+    function x(v){ return X0+(v-vmin)/(vmax-vmin)*(X1-X0); }
+    var x0=x(0);
+    // gridlines
+    [-100,-50,0,50,100].forEach(function(t){
+      el('line',{x1:x(t),y1:top-4,x2:x(t),y2:top+REGIME.length*(rowH+gap)+2,
+        stroke:t===0?'#B9C1CC':'#EAEDF2','stroke-width':t===0?1.5:1},svg);
+      el('text',{x:x(t),y:top+REGIME.length*(rowH+gap)+22,'text-anchor':'middle',
+        fill:'#8B95A3','font-size':'13','font-family':'ui-monospace,Menlo,monospace'},svg,
+        (t>0?'+':'')+t+'%');
+    });
+    REGIME.forEach(function(d,i){
+      var y=top+i*(rowH+gap);
+      var w=Math.abs(x(d[1])-x0);
+      var g=el('g',{},svg);
+      var r=el('rect',{x:d[1]>=0?x0:x0-w, y:y, width:Math.max(w,2), height:rowH-8,
+        fill:d[2], rx:4},g);
+      if(d[2]===SLA) r.setAttribute('fill-opacity','0.82');
+      el('title',{},g,d[0]+' — retorno total '+(d[1]>0?'+':'')+d[1]+'% (2022–2026)');
+      // strategy name at left
+      el('text',{x:X0-14,y:y+rowH/2+1,'text-anchor':'end',fill:INK,'font-size':'14.5',
+        'font-weight':'600','font-family':'ui-monospace,Menlo,monospace'},svg,
+        d[0].replace('_','–'));
+      // value label at bar end
+      var vx=d[1]>=0?x(d[1])+8:x(d[1])-8;
+      el('text',{x:vx,y:y+rowH/2+1,'text-anchor':d[1]>=0?'start':'end',
+        fill:d[2]===SLA?'#5A6675':d[2],'font-size':'14','font-weight':'650',
+        'font-family':'ui-monospace,Menlo,monospace'},svg,(d[1]>0?'+':'')+d[1]+'%');
+    });
+    // annotation: HRP family range
+    var yr=top+REGIME.length*(rowH+gap)+44;
+    el('text',{x:X0,y:yr,fill:'#5A6675','font-size':'13.5'},svg,
+      'Las 13 variantes de la familia HRP pierden entre −51% y −64% en esta ventana.');
+  }
+  /* ---------- deck engine ---------- */
+  var slides=[].slice.call(document.querySelectorAll('.slide'));
+  var cur=0;
+  var counter=document.getElementById('counter');
+  var progress=document.getElementById('progress');
+  var notesBody=document.getElementById('notes-body');
+  var notesSlide=document.getElementById('notes-slide');
+  function show(i){
+    if(i<0||i>=slides.length) return;
+    slides[cur].classList.remove('active');
+    cur=i;
+    slides[cur].classList.add('active');
+    counter.textContent=(cur+1)+' / '+slides.length;
+    progress.style.width=((cur+1)/slides.length*100)+'%';
+    var n=slides[cur].querySelector('aside.notes');
+    notesBody.textContent=n?n.textContent.trim():'(sin notas)';
+    notesSlide.textContent='diapositiva '+(cur+1);
+  }
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown') {e.preventDefault();show(cur+1);}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp') {e.preventDefault();show(cur-1);}
+    else if(e.key==='Home') show(0);
+    else if(e.key==='End') show(slides.length-1);
+    else if(e.key==='n'||e.key==='N') document.body.classList.toggle('show-notes');
+  });
+  document.getElementById('btn-notes').addEventListener('click',function(){
+    document.body.classList.toggle('show-notes');
+  });
+  slides.forEach(function(s){
+    s.addEventListener('click',function(e){
+      if(e.target.closest('a,button')) return;
+      show(cur+1);
+    });
+  });
+  bandChart();
+  regimeChart();
+  var h=parseInt(location.hash.slice(1),10);
+  show(h>=1&&h<=slides.length?h-1:0);
+  window.addEventListener('hashchange',function(){
+    var k=parseInt(location.hash.slice(1),10);
+    if(k>=1&&k<=slides.length) show(k-1);
+  });
+})();
+</script>
+</body>
+</html>
